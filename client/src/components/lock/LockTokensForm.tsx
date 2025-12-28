@@ -8,6 +8,16 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "../ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
 import { Lock, HelpCircle, Clock, BarChart3, Shield, Wallet, AlertCircle, RefreshCw, ChevronDown } from "lucide-react";
 import { format, addMonths, addYears, differenceInSeconds } from "date-fns";
 import bs58 from 'bs58';
@@ -104,6 +114,14 @@ const LockTokensForm = () => {
   const [selectedDuration, setSelectedDuration] = useState<string | null>(null);
   const [isLocking, setIsLocking] = useState(false);
   const [selectedToken, setSelectedToken] = useState<TokenBalance | null>(null);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [pendingLock, setPendingLock] = useState<{
+    amount: number;
+    token: TokenBalance;
+    durationSeconds: number;
+    unlockDate: Date;
+    releaseCondition: string;
+  } | null>(null);
 
   const form = useForm<LockTokenFormValues>({
     resolver: zodResolver(lockTokenSchema),
@@ -154,20 +172,44 @@ const LockTokensForm = () => {
       return;
     }
 
+    // Calculate duration in seconds
+    const durationValue = parseFloat(values.durationValue);
+    const durationSeconds = convertToSeconds(durationValue, values.durationUnit);
+    
+    if (durationSeconds < 1) {
+      toast({
+        title: "Invalid Duration",
+        description: "Lock duration must be at least 1 second",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Calculate unlock date
+    const unlockDate = new Date(Date.now() + durationSeconds * 1000);
+
+    // Store pending lock details and show confirmation dialog
+    setPendingLock({
+      amount: lockAmount,
+      token: selectedToken,
+      durationSeconds,
+      unlockDate,
+      releaseCondition: values.releaseCondition
+    });
+    setShowConfirmDialog(true);
+  };
+
+  // Process the actual lock after confirmation
+  const processPendingLock = async () => {
+    if (!pendingLock || !publicKey) return;
+
+    setShowConfirmDialog(false);
     setIsLocking(true);
 
     try {
-      // Calculate duration in seconds
-      const durationValue = parseFloat(values.durationValue);
-      const durationSeconds = convertToSeconds(durationValue, values.durationUnit);
-      
-      if (durationSeconds < 1) {
-        throw new Error('Lock duration must be at least 1 second');
-      }
-
       // Create message to sign
       const timestamp = Date.now();
-      const message = `Lock ${lockAmount} ${selectedToken.symbol} tokens for ${durationSeconds} seconds. Timestamp: ${timestamp}`;
+      const message = `Lock ${pendingLock.amount} ${pendingLock.token.symbol} tokens for ${pendingLock.durationSeconds} seconds. Timestamp: ${timestamp}`;
       const messageBytes = new TextEncoder().encode(message);
       
       // Sign the message
@@ -182,17 +224,14 @@ const LockTokensForm = () => {
       // Call the vesting API
       const result = await createVestingSchedule(
         publicKey,
-        lockAmount,
-        durationSeconds,
+        pendingLock.amount,
+        pendingLock.durationSeconds,
         message,
         signature,
-        values.releaseCondition
+        pendingLock.releaseCondition
       );
 
-      // Calculate unlock time for toast message
-      const unlockDate = new Date(Date.now() + durationSeconds * 1000);
-
-      // Reset form
+      // Reset form and state
       form.reset({
         tokenMint: "",
         amount: "",
@@ -202,17 +241,41 @@ const LockTokensForm = () => {
       });
       setSelectedDuration(null);
       setSelectedToken(null);
+      setPendingLock(null);
 
       // Refresh token balances
       refreshTokenBalances();
 
+      // Show success with Solscan link
+      const txSignature = result?.signature || result?.txSignature;
+      const solscanUrl = txSignature 
+        ? `https://solscan.io/tx/${txSignature}` 
+        : null;
+
       toast({
-        title: "Tokens Locked Successfully",
-        description: `You've locked ${lockAmount} ${selectedToken.symbol} for ${formatDuration(durationSeconds)}. Unlocks: ${format(unlockDate, 'PPP pp')}`,
+        title: "✅ Tokens Locked Successfully",
+        description: (
+          <div className="space-y-2">
+            <p>You've locked {pendingLock.amount} {pendingLock.token.symbol} for {formatDuration(pendingLock.durationSeconds)}</p>
+            <p className="text-xs text-cyan-400">Unlocks: {format(pendingLock.unlockDate, 'PPP pp')}</p>
+            {solscanUrl && (
+              <a 
+                href={solscanUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-xs text-cyan-400 hover:text-cyan-300 underline flex items-center gap-1 mt-2"
+              >
+                View on Solscan →
+              </a>
+            )}
+          </div>
+        ),
+        duration: 8000,
       });
 
     } catch (error: any) {
       console.error('Error locking tokens:', error);
+      setPendingLock(null);
       toast({
         title: "Failed to Lock Tokens",
         description: error.message || "An error occurred while locking tokens",
@@ -574,6 +637,78 @@ const LockTokensForm = () => {
           </div>
         </form>
       </Form>
+
+      {/* Confirmation Dialog */}
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent className="bg-gray-900 border-cyan-500/30">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-2xl font-bold text-cyan-400 flex items-center gap-2">
+              <Lock className="h-6 w-6" />
+              Confirm Token Lock
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-300 space-y-4 pt-4">
+              {pendingLock && (
+                <>
+                  <div className="bg-gray-800/50 rounded-lg p-4 space-y-3 border border-cyan-500/20">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Amount:</span>
+                      <span className="text-white font-semibold text-lg">
+                        {pendingLock.amount} {pendingLock.token.symbol}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Duration:</span>
+                      <span className="text-white font-semibold">
+                        {formatDuration(pendingLock.durationSeconds)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Unlocks:</span>
+                      <span className="text-cyan-400 font-semibold text-sm">
+                        {format(pendingLock.unlockDate, 'PPP pp')}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Lock Type:</span>
+                      <span className="text-white font-semibold capitalize">
+                        {pendingLock.releaseCondition.replace('-', ' ')}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4">
+                    <p className="text-yellow-400 text-sm font-semibold flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4" />
+                      Important Notice
+                    </p>
+                    <p className="text-yellow-200/80 text-xs mt-2">
+                      Once locked, your tokens cannot be accessed until the unlock date. 
+                      This transaction is irreversible. Please verify all details before confirming.
+                    </p>
+                  </div>
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-3">
+            <AlertDialogCancel 
+              className="bg-gray-800 hover:bg-gray-700 text-white border-gray-600"
+              onClick={() => {
+                setPendingLock(null);
+                setShowConfirmDialog(false);
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-semibold"
+              onClick={processPendingLock}
+            >
+              Confirm & Lock Tokens
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 };

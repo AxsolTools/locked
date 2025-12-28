@@ -13,6 +13,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import { Keypair, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import axios from 'axios';
+import nacl from 'tweetnacl';
 
 // Constants for localStorage keys
 const WALLET_STORAGE_KEY = 'locked_wallet';
@@ -357,9 +358,9 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
     }
 
     try {
-      // Use @solana/web3.js Keypair's built-in sign method
-      // This signs the message with ed25519
-      const signature = keypair.sign(message);
+      // Use tweetnacl to sign the message with ed25519
+      // nacl.sign.detached creates a 64-byte signature
+      const signature = nacl.sign.detached(message, keypair.secretKey);
       console.log('[WALLET] Message signed successfully');
       return signature;
     } catch (error) {

@@ -163,6 +163,94 @@ app.get('/api/token/config', (req, res) => {
   });
 });
 
+// Solana Token Balances API - fetches user's SPL token balances using Helius RPC
+app.get('/api/solana/token-balances/:walletAddress', async (req, res) => {
+  const { walletAddress } = req.params;
+  
+  if (!walletAddress || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(walletAddress)) {
+    return res.status(400).json({ success: false, error: 'Invalid wallet address' });
+  }
+  
+  const heliusApiKey = process.env.HELIUS_API_KEY;
+  const heliusRpcUrl = process.env.HELIUS_RPC_URL || (heliusApiKey ? `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}` : null);
+  
+  if (!heliusRpcUrl) {
+    return res.status(500).json({ success: false, error: 'Helius RPC not configured' });
+  }
+  
+  try {
+    // Use Helius getAssetsByOwner for comprehensive token data
+    const response = await fetch(heliusRpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'get-token-balances',
+        method: 'getAssetsByOwner',
+        params: {
+          ownerAddress: walletAddress,
+          page: 1,
+          limit: 100,
+          displayOptions: {
+            showFungible: true,
+            showNativeBalance: true
+          }
+        }
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (data.error) {
+      console.error('Helius RPC error:', data.error);
+      return res.status(500).json({ success: false, error: data.error.message || 'RPC error' });
+    }
+    
+    // Transform the response to our token format
+    const tokens: any[] = [];
+    
+    // Add native SOL balance if available
+    if (data.result?.nativeBalance) {
+      const solBalance = data.result.nativeBalance.lamports || 0;
+      tokens.push({
+        mint: 'So11111111111111111111111111111111111111112',
+        symbol: 'SOL',
+        name: 'Solana',
+        decimals: 9,
+        balance: solBalance.toString(),
+        uiBalance: solBalance / 1e9,
+        logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png'
+      });
+    }
+    
+    // Add fungible tokens
+    if (data.result?.items) {
+      for (const item of data.result.items) {
+        if (item.interface === 'FungibleToken' || item.interface === 'FungibleAsset') {
+          const tokenInfo = item.token_info || {};
+          const content = item.content || {};
+          const metadata = content.metadata || {};
+          
+          tokens.push({
+            mint: item.id,
+            symbol: tokenInfo.symbol || metadata.symbol || 'Unknown',
+            name: metadata.name || tokenInfo.symbol || 'Unknown Token',
+            decimals: tokenInfo.decimals || 9,
+            balance: tokenInfo.balance || '0',
+            uiBalance: tokenInfo.balance ? Number(tokenInfo.balance) / Math.pow(10, tokenInfo.decimals || 9) : 0,
+            logoURI: content.links?.image || content.files?.[0]?.uri || null
+          });
+        }
+      }
+    }
+    
+    res.json({ success: true, tokens });
+  } catch (error: any) {
+    console.error('Error fetching token balances:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to fetch token balances' });
+  }
+});
+
 // API Routes
 app.use('/api', routes);
 console.log('API routes registered from routes.ts');

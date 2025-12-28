@@ -86,8 +86,8 @@ export const SolanaWalletGenerator: React.FC<SolanaWalletGeneratorProps> = ({ on
   // If we just generated a wallet, show the private key confirmation screen
   if (generatedKeys && showPrivateKey) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center p-4">
-        <Card className="w-full max-w-lg bg-gray-800/90 border-purple-500/30 backdrop-blur">
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">
+        <Card className="w-full max-w-lg bg-zinc-900/90 border-zinc-800 backdrop-blur">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center">
               <AlertTriangle className="w-8 h-8 text-amber-500" />
@@ -99,7 +99,7 @@ export const SolanaWalletGenerator: React.FC<SolanaWalletGeneratorProps> = ({ on
           </CardHeader>
           
           <CardContent className="space-y-6">
-            <Alert variant="destructive" className="bg-red-900/30 border-red-500/50">
+            <Alert variant="destructive" className="bg-red-950/50 border-red-500/50">
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Critical Security Warning</AlertTitle>
               <AlertDescription>
@@ -111,7 +111,7 @@ export const SolanaWalletGenerator: React.FC<SolanaWalletGeneratorProps> = ({ on
             {/* Public Key Display */}
             <div className="space-y-2">
               <label className="text-sm text-gray-400">Your Wallet Address (Public Key)</label>
-              <div className="bg-gray-900/50 rounded-lg p-3 font-mono text-sm text-green-400 break-all">
+              <div className="bg-zinc-950 rounded-lg p-3 font-mono text-sm text-cyan-400 break-all border border-zinc-800">
                 {generatedKeys.publicKey}
               </div>
             </div>
@@ -120,7 +120,7 @@ export const SolanaWalletGenerator: React.FC<SolanaWalletGeneratorProps> = ({ on
             <div className="space-y-2">
               <label className="text-sm text-gray-400">Your Private Key (Keep Secret!)</label>
               <div className="relative">
-                <div className="bg-gray-900/50 rounded-lg p-3 font-mono text-sm text-amber-400 break-all">
+                <div className="bg-zinc-950 rounded-lg p-3 font-mono text-sm text-amber-400 break-all border border-zinc-800">
                   {generatedKeys.privateKey}
                 </div>
                 <Button
@@ -130,7 +130,7 @@ export const SolanaWalletGenerator: React.FC<SolanaWalletGeneratorProps> = ({ on
                   onClick={handleCopyPrivateKey}
                 >
                   {hasCopied ? (
-                    <Check className="h-4 w-4 text-green-500" />
+                    <Check className="h-4 w-4 text-emerald-500" />
                   ) : (
                     <Copy className="h-4 w-4" />
                   )}
@@ -139,7 +139,7 @@ export const SolanaWalletGenerator: React.FC<SolanaWalletGeneratorProps> = ({ on
             </div>
 
             {/* Confirmation Checkbox */}
-            <div className="flex items-start space-x-3 bg-purple-900/30 rounded-lg p-4">
+            <div className="flex items-start space-x-3 bg-cyan-950/30 rounded-lg p-4 border border-cyan-500/30">
               <Checkbox
                 id="saved-key"
                 checked={hasSavedKey}
@@ -157,7 +157,7 @@ export const SolanaWalletGenerator: React.FC<SolanaWalletGeneratorProps> = ({ on
 
             {/* Proceed Button */}
             <Button
-              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+              className="w-full bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-600 hover:to-teal-600 text-black"
               size="lg"
               disabled={!hasSavedKey}
               onClick={handleConfirmSaved}
@@ -173,11 +173,11 @@ export const SolanaWalletGenerator: React.FC<SolanaWalletGeneratorProps> = ({ on
 
   // Initial screen: Generate or Import
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center p-4">
-      <Card className="w-full max-w-lg bg-gray-800/90 border-purple-500/30 backdrop-blur">
+    <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">
+      <Card className="w-full max-w-lg bg-zinc-900/90 border-zinc-800 backdrop-blur">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 w-16 h-16 bg-purple-500/20 rounded-full flex items-center justify-center">
-            <Wallet className="w-8 h-8 text-purple-500" />
+          <div className="mx-auto mb-4 w-16 h-16 bg-cyan-500/20 rounded-full flex items-center justify-center">
+            <Wallet className="w-8 h-8 text-cyan-400" />
           </div>
           <CardTitle className="text-2xl text-white">Welcome to LOCKED</CardTitle>
           <CardDescription className="text-gray-400">
@@ -199,7 +199,7 @@ export const SolanaWalletGenerator: React.FC<SolanaWalletGeneratorProps> = ({ on
               </div>
               
               <Button
-                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                className="w-full bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-600 hover:to-teal-600 text-black"
                 size="lg"
                 onClick={handleGenerateWallet}
               >
@@ -218,18 +218,18 @@ export const SolanaWalletGenerator: React.FC<SolanaWalletGeneratorProps> = ({ on
                 placeholder="Enter your private key (base58)"
                 value={importKey}
                 onChange={(e) => setImportKey(e.target.value)}
-                className="bg-gray-900/50 border-gray-700"
+                className="bg-zinc-950 border-zinc-700"
               />
               
               {importError && (
-                <Alert variant="destructive" className="bg-red-900/30 border-red-500/50">
+                <Alert variant="destructive" className="bg-red-950/50 border-red-500/50">
                   <AlertTriangle className="h-4 w-4" />
                   <AlertDescription>{importError}</AlertDescription>
                 </Alert>
               )}
               
               <Button
-                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                className="w-full bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-600 hover:to-teal-600 text-black"
                 size="lg"
                 onClick={handleImportWallet}
               >

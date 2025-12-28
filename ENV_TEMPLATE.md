@@ -27,6 +27,14 @@ SOLANA_RPC_URLS=https://api.mainnet-beta.solana.com,https://solana-api.projectse
 SOLANA_WS_URL=wss://api.mainnet-beta.solana.com
 
 # ===========================================
+# Helius RPC Configuration (Recommended)
+# ===========================================
+# Helius provides enhanced RPC features including token balance fetching
+# Get your API key at https://helius.dev
+HELIUS_API_KEY=your_helius_api_key_here
+HELIUS_RPC_URL=https://mainnet.helius-rpc.com/?api-key=your_helius_api_key_here
+
+# ===========================================
 # House Wallet Configuration (CRITICAL)
 # ===========================================
 # The house wallet holds funds for payouts and receives deposits

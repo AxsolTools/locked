@@ -3,16 +3,17 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "../../hooks/use-toast";
-import { useSolanaWallet } from "../../contexts/SolanaWalletContext";
+import { useSolanaWallet, TokenBalance } from "../../contexts/SolanaWalletContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "../ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Lock, HelpCircle, Clock, BarChart3, Shield, Wallet, AlertCircle } from "lucide-react";
+import { Lock, HelpCircle, Clock, BarChart3, Shield, Wallet, AlertCircle, RefreshCw, ChevronDown } from "lucide-react";
 import { format, addMonths, addYears, differenceInSeconds } from "date-fns";
 import bs58 from 'bs58';
 
 const lockTokenSchema = z.object({
+  tokenMint: z.string().min(1, "Please select a token"),
   amount: z.string().min(1, "Amount is required").refine(
     (val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0,
     "Must be a positive number"
@@ -98,33 +99,29 @@ const fetchGameBalance = async (walletAddress: string): Promise<number> => {
 };
 
 const LockTokensForm = () => {
-  const { publicKey, isConnected, signMessage, formatAddress } = useSolanaWallet();
+  const { publicKey, isConnected, signMessage, formatAddress, tokenBalances, isLoadingTokens, refreshTokenBalances } = useSolanaWallet();
   const { toast } = useToast();
   const [selectedDuration, setSelectedDuration] = useState<string | null>(null);
   const [isLocking, setIsLocking] = useState(false);
-  const [gameBalance, setGameBalance] = useState<number>(0);
-  const [loadingBalance, setLoadingBalance] = useState(false);
-
-  // Fetch game balance on mount and when wallet changes
-  useEffect(() => {
-    if (publicKey && isConnected) {
-      setLoadingBalance(true);
-      fetchGameBalance(publicKey)
-        .then(setGameBalance)
-        .catch(console.error)
-        .finally(() => setLoadingBalance(false));
-    }
-  }, [publicKey, isConnected]);
+  const [selectedToken, setSelectedToken] = useState<TokenBalance | null>(null);
 
   const form = useForm<LockTokenFormValues>({
     resolver: zodResolver(lockTokenSchema),
     defaultValues: {
+      tokenMint: "",
       amount: "",
       durationValue: "30",
       durationUnit: "days",
       releaseCondition: "time-based",
     },
   });
+
+  // Update selected token when tokenMint changes
+  const watchedMint = form.watch("tokenMint");
+  useEffect(() => {
+    const token = tokenBalances.find(t => t.mint === watchedMint);
+    setSelectedToken(token || null);
+  }, [watchedMint, tokenBalances]);
 
   const onSubmit = async (values: LockTokenFormValues) => {
     if (!publicKey || !isConnected) {
@@ -136,13 +133,22 @@ const LockTokensForm = () => {
       return;
     }
 
+    if (!selectedToken) {
+      toast({
+        title: "No Token Selected",
+        description: "Please select a token to lock",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const lockAmount = parseFloat(values.amount);
     
     // Check balance
-    if (lockAmount > gameBalance) {
+    if (lockAmount > selectedToken.uiBalance) {
       toast({
         title: "Insufficient Balance",
-        description: `You only have ${gameBalance.toFixed(2)} LOCKED tokens available. Deposit more to continue.`,
+        description: `You only have ${selectedToken.uiBalance.toFixed(selectedToken.decimals > 6 ? 6 : selectedToken.decimals)} ${selectedToken.symbol} available.`,
         variant: "destructive",
       });
       return;
@@ -161,7 +167,7 @@ const LockTokensForm = () => {
 
       // Create message to sign
       const timestamp = Date.now();
-      const message = `Lock ${lockAmount} LOCKED tokens for ${durationSeconds} seconds. Timestamp: ${timestamp}`;
+      const message = `Lock ${lockAmount} ${selectedToken.symbol} tokens for ${durationSeconds} seconds. Timestamp: ${timestamp}`;
       const messageBytes = new TextEncoder().encode(message);
       
       // Sign the message
@@ -183,24 +189,26 @@ const LockTokensForm = () => {
         values.releaseCondition
       );
 
-      // Update local balance
-      setGameBalance(result.newBalance);
-
       // Calculate unlock time for toast message
       const unlockDate = new Date(Date.now() + durationSeconds * 1000);
 
       // Reset form
       form.reset({
+        tokenMint: "",
         amount: "",
         durationValue: "30",
         durationUnit: "days",
         releaseCondition: "time-based",
       });
       setSelectedDuration(null);
+      setSelectedToken(null);
+
+      // Refresh token balances
+      refreshTokenBalances();
 
       toast({
         title: "Tokens Locked Successfully",
-        description: `You've locked ${lockAmount} LOCKED tokens for ${formatDuration(durationSeconds)}. Unlocks: ${format(unlockDate, 'PPP pp')}`,
+        description: `You've locked ${lockAmount} ${selectedToken.symbol} for ${formatDuration(durationSeconds)}. Unlocks: ${format(unlockDate, 'PPP pp')}`,
       });
 
     } catch (error: any) {
@@ -249,38 +257,48 @@ const LockTokensForm = () => {
   };
 
   return (
-    <section className="bg-card rounded-xl p-6 shadow-xl border border-purple-500/20">
+    <section className="bg-card rounded-xl p-6 shadow-xl border border-cyan-500/20">
       <div className="mb-8 flex items-center justify-between">
-        <h2 className="text-xl md:text-2xl font-outfit font-bold">Lock Your LOCKED Tokens</h2>
+        <h2 className="text-xl md:text-2xl font-outfit font-bold">Lock Your SPL Tokens</h2>
         <div className="relative group">
           <HelpCircle className="h-5 w-5 text-muted-foreground cursor-help" />
-          <div className="absolute z-10 right-0 w-64 bg-slate-800 p-3 rounded-lg shadow-lg text-sm text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity">
-            Lock your LOCKED tokens for a specified time period. Tokens will be released automatically after the lock period ends.
+          <div className="absolute z-10 right-0 w-64 bg-zinc-900 p-3 rounded-lg shadow-lg text-sm text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity">
+            Lock any SPL token from your wallet for a specified time period. Tokens will be released automatically after the lock period ends.
           </div>
         </div>
       </div>
 
       {/* Wallet Status */}
       {isConnected && publicKey ? (
-        <div className="mb-6 bg-purple-900/30 border border-purple-500/30 rounded-lg p-4 text-white">
+        <div className="mb-6 bg-cyan-950/30 border border-cyan-500/30 rounded-lg p-4 text-white">
           <div className="flex items-start gap-2">
-            <Wallet className="h-5 w-5 mt-0.5 text-purple-400" />
+            <Wallet className="h-5 w-5 mt-0.5 text-cyan-400" />
             <div className="flex-grow">
-              <p className="font-medium text-purple-300">Wallet Connected</p>
+              <p className="font-medium text-cyan-300">Wallet Connected</p>
               <p className="text-sm text-gray-300">Address: {formatAddress(publicKey)}</p>
               <p className="text-sm text-gray-300">
-                Game Balance: {loadingBalance ? '...' : `${gameBalance.toFixed(2)} LOCKED`}
+                {isLoadingTokens ? 'Loading tokens...' : `${tokenBalances.length} token${tokenBalances.length !== 1 ? 's' : ''} found`}
               </p>
             </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => refreshTokenBalances()}
+              disabled={isLoadingTokens}
+              className="text-cyan-400 hover:text-cyan-300"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoadingTokens ? 'animate-spin' : ''}`} />
+            </Button>
           </div>
         </div>
       ) : (
-        <div className="mb-6 bg-amber-900/30 border border-amber-500/30 rounded-lg p-4 text-white">
+        <div className="mb-6 bg-zinc-900/50 border border-zinc-700 rounded-lg p-4 text-white">
           <div className="flex items-start gap-2">
-            <AlertCircle className="h-5 w-5 mt-0.5 text-amber-400" />
+            <AlertCircle className="h-5 w-5 mt-0.5 text-zinc-400" />
             <div>
-              <p className="font-medium text-amber-300">Wallet Not Connected</p>
-              <p className="text-sm text-gray-300">Generate or import a wallet to lock tokens.</p>
+              <p className="font-medium text-zinc-300">Wallet Not Connected</p>
+              <p className="text-sm text-gray-400">Generate or import a wallet to lock tokens.</p>
             </div>
           </div>
         </div>
@@ -288,6 +306,44 @@ const LockTokensForm = () => {
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          {/* Token Selection */}
+          <FormField
+            control={form.control}
+            name="tokenMint"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-gray-300">Select Token</FormLabel>
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <FormControl>
+                    <SelectTrigger className="bg-zinc-900 text-white border border-zinc-700">
+                      <SelectValue placeholder={isLoadingTokens ? "Loading tokens..." : "Select a token to lock"} />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent className="bg-zinc-900 border border-zinc-700 max-h-[300px]">
+                    {tokenBalances.length === 0 && !isLoadingTokens ? (
+                      <SelectItem value="none" disabled>No tokens found in wallet</SelectItem>
+                    ) : (
+                      tokenBalances.map((token) => (
+                        <SelectItem key={token.mint} value={token.mint}>
+                          <div className="flex items-center gap-2">
+                            {token.logoURI && (
+                              <img src={token.logoURI} alt={token.symbol} className="w-5 h-5 rounded-full" />
+                            )}
+                            <span>{token.symbol}</span>
+                            <span className="text-gray-400 text-xs">
+                              ({token.uiBalance.toFixed(token.decimals > 6 ? 6 : 2)})
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
           {/* Amount Field */}
           <FormField
             control={form.control}
@@ -299,7 +355,7 @@ const LockTokensForm = () => {
                   <FormControl>
                     <Input
                       placeholder="0.00"
-                      className="w-full bg-slate-800 text-white border border-purple-500/30 rounded-lg pr-20"
+                      className="w-full bg-zinc-900 text-white border border-zinc-700 rounded-lg pr-20"
                       {...field}
                       onChange={(e) => {
                         const value = e.target.value;
@@ -310,12 +366,25 @@ const LockTokensForm = () => {
                     />
                   </FormControl>
                   <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none">
-                    <span className="text-purple-400 font-medium">LOCKED</span>
+                    <span className="text-cyan-400 font-medium">{selectedToken?.symbol || 'TOKEN'}</span>
                   </div>
                 </div>
-                <p className="text-xs text-gray-400 mt-1">
-                  Available: {gameBalance.toFixed(2)} LOCKED
-                </p>
+                {selectedToken && (
+                  <div className="flex justify-between items-center mt-1">
+                    <p className="text-xs text-gray-400">
+                      Available: {selectedToken.uiBalance.toFixed(selectedToken.decimals > 6 ? 6 : 2)} {selectedToken.symbol}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="text-cyan-400 text-xs p-0 h-auto"
+                      onClick={() => field.onChange(selectedToken.uiBalance.toString())}
+                    >
+                      MAX
+                    </Button>
+                  </div>
+                )}
                 <FormMessage />
               </FormItem>
             )}
@@ -339,8 +408,8 @@ const LockTokensForm = () => {
                   variant={selectedDuration === key ? "default" : "outline"}
                   className={
                     selectedDuration === key
-                      ? "bg-purple-600 hover:bg-purple-700 text-white text-xs"
-                      : "bg-slate-800 border-purple-500/30 hover:bg-slate-700 text-gray-300 text-xs"
+                      ? "bg-cyan-600 hover:bg-cyan-700 text-white text-xs"
+                      : "bg-zinc-900 border-zinc-700 hover:bg-zinc-800 text-gray-300 text-xs"
                   }
                   onClick={() => handleDurationSelect(key)}
                 >
@@ -363,7 +432,7 @@ const LockTokensForm = () => {
                       type="number"
                       min="1"
                       placeholder="30"
-                      className="w-full bg-slate-800 text-white border border-purple-500/30 rounded-lg"
+                      className="w-full bg-zinc-900 text-white border border-zinc-700 rounded-lg"
                       {...field}
                       onChange={(e) => {
                         field.onChange(e.target.value);
@@ -390,11 +459,11 @@ const LockTokensForm = () => {
                     }}
                   >
                     <FormControl>
-                      <SelectTrigger className="bg-slate-800 text-white border border-purple-500/30">
+                      <SelectTrigger className="bg-zinc-900 text-white border border-zinc-700">
                         <SelectValue placeholder="Select unit" />
                       </SelectTrigger>
                     </FormControl>
-                    <SelectContent className="bg-slate-800 border border-purple-500/30">
+                    <SelectContent className="bg-zinc-900 border border-zinc-700">
                       <SelectItem value="seconds">Seconds</SelectItem>
                       <SelectItem value="minutes">Minutes</SelectItem>
                       <SelectItem value="hours">Hours</SelectItem>
@@ -411,9 +480,9 @@ const LockTokensForm = () => {
           </div>
           
           {/* Duration Preview */}
-          <div className="bg-slate-800/50 rounded-lg p-3 border border-purple-500/20">
+          <div className="bg-zinc-900/50 rounded-lg p-3 border border-zinc-700">
             <p className="text-sm text-gray-400">
-              Lock duration: <span className="text-purple-400 font-medium">
+              Lock duration: <span className="text-cyan-400 font-medium">
                 {formatDuration(convertToSeconds(
                   parseFloat(form.watch("durationValue") || "0"), 
                   form.watch("durationUnit")
@@ -442,34 +511,34 @@ const LockTokensForm = () => {
                   <Button
                     type="button"
                     variant="outline"
-                    className={`bg-slate-800 hover:bg-slate-700 border-purple-500/30 p-3 h-full text-sm flex flex-col items-center justify-center ${
-                      field.value === "time-based" ? "border-purple-500 border-2" : ""
+                    className={`bg-zinc-900 hover:bg-zinc-800 border-zinc-700 p-3 h-full text-sm flex flex-col items-center justify-center ${
+                      field.value === "time-based" ? "border-cyan-500 border-2" : ""
                     }`}
                     onClick={() => field.onChange("time-based")}
                   >
-                    <Clock className="h-5 w-5 mb-1 text-purple-400" />
+                    <Clock className="h-5 w-5 mb-1 text-cyan-400" />
                     <span className="text-gray-300">Time-Based</span>
                   </Button>
                   <Button
                     type="button"
                     variant="outline"
-                    className={`bg-slate-800 hover:bg-slate-700 border-purple-500/30 p-3 h-full text-sm flex flex-col items-center justify-center ${
-                      field.value === "vesting" ? "border-[#14F195] border-2" : ""
+                    className={`bg-zinc-900 hover:bg-zinc-800 border-zinc-700 p-3 h-full text-sm flex flex-col items-center justify-center ${
+                      field.value === "vesting" ? "border-emerald-500 border-2" : ""
                     }`}
                     onClick={() => field.onChange("vesting")}
                   >
-                    <BarChart3 className="h-5 w-5 mb-1 text-[#14F195]" />
+                    <BarChart3 className="h-5 w-5 mb-1 text-emerald-400" />
                     <span className="text-gray-300">Linear Vesting</span>
                   </Button>
                   <Button
                     type="button"
                     variant="outline"
-                    className={`bg-slate-800 hover:bg-slate-700 border-purple-500/30 p-3 h-full text-sm flex flex-col items-center justify-center ${
-                      field.value === "conditional" ? "border-pink-500 border-2" : ""
+                    className={`bg-zinc-900 hover:bg-zinc-800 border-zinc-700 p-3 h-full text-sm flex flex-col items-center justify-center ${
+                      field.value === "conditional" ? "border-teal-500 border-2" : ""
                     }`}
                     onClick={() => field.onChange("conditional")}
                   >
-                    <Shield className="h-5 w-5 mb-1 text-pink-400" />
+                    <Shield className="h-5 w-5 mb-1 text-teal-400" />
                     <span className="text-gray-300">Cliff Vesting</span>
                   </Button>
                 </div>
@@ -484,21 +553,21 @@ const LockTokensForm = () => {
           />
 
           {/* Submit Button */}
-          <div className="pt-4 border-t border-purple-500/20">
+          <div className="pt-4 border-t border-zinc-700">
             <Button
               type="submit"
-              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold py-3"
-              disabled={isLocking || !isConnected}
+              className="w-full bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-600 hover:to-teal-600 text-black font-bold py-3"
+              disabled={isLocking || !isConnected || !selectedToken}
             >
               {isLocking ? (
                 <>
-                  <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                  <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-black border-t-transparent"></span>
                   Locking Tokens...
                 </>
               ) : (
                 <>
                   <Lock className="mr-2 h-4 w-4" />
-                  Lock LOCKED Tokens
+                  Lock {selectedToken?.symbol || 'Tokens'}
                 </>
               )}
             </Button>

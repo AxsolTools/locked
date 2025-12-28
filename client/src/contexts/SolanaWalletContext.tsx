@@ -6,21 +6,40 @@
  * - Store encrypted private key in localStorage
  * - Import existing wallet via private key
  * - Sign transactions when needed
+ * - Fetch and display SPL token balances
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { Keypair, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
+import axios from 'axios';
 
 // Constants for localStorage keys
 const WALLET_STORAGE_KEY = 'locked_wallet';
 const WALLET_CREATED_KEY = 'locked_wallet_created';
+
+// Helius RPC endpoint (will be fetched from backend config)
+const HELIUS_RPC_URL = '/api/solana/rpc';
+
+// Token balance interface
+export interface TokenBalance {
+  mint: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  balance: string;
+  uiBalance: number;
+  logoURI?: string;
+}
 
 interface WalletState {
   publicKey: string | null;
   isConnected: boolean;
   isLoading: boolean;
   hasSeenPrivateKey: boolean;
+  tokenBalances: TokenBalance[];
+  isLoadingTokens: boolean;
+  tokenError: string | null;
 }
 
 interface WalletContextType extends WalletState {
@@ -34,6 +53,10 @@ interface WalletContextType extends WalletState {
   // Signing operations
   signMessage: (message: Uint8Array) => Uint8Array | null;
   getKeypair: () => Keypair | null;
+  
+  // Token operations
+  fetchTokenBalances: () => Promise<void>;
+  refreshTokenBalances: () => Promise<void>;
   
   // Utility
   formatAddress: (address: string, chars?: number) => string;
@@ -50,7 +73,10 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
     publicKey: null,
     isConnected: false,
     isLoading: true,
-    hasSeenPrivateKey: false
+    hasSeenPrivateKey: false,
+    tokenBalances: [],
+    isLoadingTokens: false,
+    tokenError: null
   });
 
   // Get the keypair from localStorage
@@ -69,6 +95,42 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
     }
   }, []);
 
+  // Fetch token balances from Helius RPC
+  const fetchTokenBalances = useCallback(async () => {
+    if (!state.publicKey) return;
+    
+    setState(prev => ({ ...prev, isLoadingTokens: true, tokenError: null }));
+    
+    try {
+      // Fetch token balances through our backend (which uses Helius RPC)
+      const response = await axios.get(`/api/solana/token-balances/${state.publicKey}`);
+      
+      if (response.data.success && response.data.tokens) {
+        setState(prev => ({
+          ...prev,
+          tokenBalances: response.data.tokens,
+          isLoadingTokens: false,
+          tokenError: null
+        }));
+      } else {
+        throw new Error(response.data.error || 'Failed to fetch token balances');
+      }
+    } catch (error: any) {
+      console.error('Error fetching token balances:', error);
+      setState(prev => ({
+        ...prev,
+        tokenBalances: [],
+        isLoadingTokens: false,
+        tokenError: error.message || 'Failed to fetch token balances'
+      }));
+    }
+  }, [state.publicKey]);
+
+  // Refresh token balances (alias for fetchTokenBalances)
+  const refreshTokenBalances = useCallback(async () => {
+    await fetchTokenBalances();
+  }, [fetchTokenBalances]);
+
   // Initialize wallet on mount
   useEffect(() => {
     const initWallet = async () => {
@@ -81,14 +143,20 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
             publicKey: keypair.publicKey.toBase58(),
             isConnected: true,
             isLoading: false,
-            hasSeenPrivateKey: hasSeenKey
+            hasSeenPrivateKey: hasSeenKey,
+            tokenBalances: [],
+            isLoadingTokens: false,
+            tokenError: null
           });
         } else {
           setState({
             publicKey: null,
             isConnected: false,
             isLoading: false,
-            hasSeenPrivateKey: false
+            hasSeenPrivateKey: false,
+            tokenBalances: [],
+            isLoadingTokens: false,
+            tokenError: null
           });
         }
       } catch (error) {
@@ -97,13 +165,23 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
           publicKey: null,
           isConnected: false,
           isLoading: false,
-          hasSeenPrivateKey: false
+          hasSeenPrivateKey: false,
+          tokenBalances: [],
+          isLoadingTokens: false,
+          tokenError: null
         });
       }
     };
 
     initWallet();
   }, [getStoredKeypair]);
+
+  // Fetch token balances when wallet connects
+  useEffect(() => {
+    if (state.isConnected && state.publicKey && !state.isLoading) {
+      fetchTokenBalances();
+    }
+  }, [state.isConnected, state.publicKey, state.isLoading]);
 
   // Generate a new wallet
   const generateWallet = useCallback(() => {
@@ -119,7 +197,10 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
       publicKey,
       isConnected: true,
       isLoading: false,
-      hasSeenPrivateKey: false
+      hasSeenPrivateKey: false,
+      tokenBalances: [],
+      isLoadingTokens: false,
+      tokenError: null
     });
 
     return { publicKey, privateKey };
@@ -154,7 +235,10 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
         publicKey: keypair.publicKey.toBase58(),
         isConnected: true,
         isLoading: false,
-        hasSeenPrivateKey: true
+        hasSeenPrivateKey: true,
+        tokenBalances: [],
+        isLoadingTokens: false,
+        tokenError: null
       });
 
       return true;
@@ -187,7 +271,10 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
       publicKey: null,
       isConnected: false,
       isLoading: false,
-      hasSeenPrivateKey: false
+      hasSeenPrivateKey: false,
+      tokenBalances: [],
+      isLoadingTokens: false,
+      tokenError: null
     });
   }, []);
 
@@ -222,6 +309,8 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
     confirmPrivateKeySaved,
     signMessage,
     getKeypair,
+    fetchTokenBalances,
+    refreshTokenBalances,
     formatAddress
   };
 

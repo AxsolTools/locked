@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { Menu, X, Lock, Home, History, BarChart3, ShieldCheck, LayoutDashboard, Timer, Rocket, Dice1 } from "lucide-react";
+import { Menu, X, Lock, Home, History, BarChart3, ShieldCheck, LayoutDashboard, Rocket, Dice1 } from "lucide-react";
 import WalletStatus from "./wallet/WalletStatus";
 import { useSolanaWallet } from "../contexts/SolanaWalletContext";
 import { useIsMobile } from "../hooks/use-mobile";
@@ -48,18 +48,18 @@ const Header = () => {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full bg-[#121A2F] py-3 px-4 md:px-6 shadow-sm">
+    <header className="sticky top-0 z-50 w-full bg-[#0a0a0a] border-b border-zinc-800/50 py-3 px-4 md:px-6 shadow-sm">
       <div className="max-w-7xl mx-auto flex justify-between items-center">
         <div className="flex items-center space-x-2">
-          <div className="h-10 w-10 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg flex items-center justify-center">
-            <Lock className="h-6 w-6 text-white" />
+          <div className="h-10 w-10 bg-gradient-to-r from-cyan-500 to-teal-500 rounded-lg flex items-center justify-center">
+            <Lock className="h-6 w-6 text-black" />
           </div>
           <Link href="/" className="text-xl md:text-2xl font-outfit font-bold text-foreground whitespace-nowrap">
-            <span className="bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent">LOCKED</span>
+            <span className="bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent">LOCKED</span>
           </Link>
           <Link 
             href="/dice-game" 
-            className="hidden md:flex ml-2 text-xs bg-purple-500/10 hover:bg-purple-500/20 transition-colors px-2 py-1 rounded-md items-center"
+            className="hidden md:flex ml-2 text-xs bg-cyan-500/10 hover:bg-cyan-500/20 transition-colors px-2 py-1 rounded-md items-center"
           >
             <span className="mr-1">🎲</span>
             <span>Dice Game</span>
@@ -70,7 +70,6 @@ const Header = () => {
           <NavLink href="/roadmap" icon={<Rocket className="h-4 w-4" />}>Roadmap</NavLink>
           <NavLink href="/dashboard" icon={<LayoutDashboard className="h-4 w-4" />}>Dashboard</NavLink>
           <NavLink href="/lock-tokens" icon={<Lock className="h-4 w-4" />}>Lock Tokens</NavLink>
-          <NavLink href="/escrow" icon={<Timer className="h-4 w-4" />}>Escrow</NavLink>
           <NavLink href="/history" icon={<History className="h-4 w-4" />}>History</NavLink>
           <NavLink href="/analytics" icon={<BarChart3 className="h-4 w-4" />}>Analytics</NavLink>
           <NavLink href="/dice-game" icon={<Dice1 className="h-4 w-4" />}>Dice Game</NavLink>
@@ -106,7 +105,6 @@ const Header = () => {
               <NavLink href="/roadmap" icon={<Rocket className="h-4 w-4" />}>Roadmap</NavLink>
               <NavLink href="/dashboard" icon={<LayoutDashboard className="h-4 w-4" />}>Dashboard</NavLink>
               <NavLink href="/lock-tokens" icon={<Lock className="h-4 w-4" />}>Lock Tokens</NavLink>
-              <NavLink href="/escrow" icon={<Timer className="h-4 w-4" />}>Escrow</NavLink>
               <NavLink href="/history" icon={<History className="h-4 w-4" />}>History</NavLink>
               <NavLink href="/analytics" icon={<BarChart3 className="h-4 w-4" />}>Analytics</NavLink>
               <NavLink href="/dice-game" icon={<Dice1 className="h-4 w-4" />}>Dice Game</NavLink>

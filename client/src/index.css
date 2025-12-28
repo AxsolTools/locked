@@ -4,41 +4,46 @@
 
 @layer base {
   :root {
-    --background: 222 47% 7%;
-    --foreground: 0 0% 100%;
+    /* Professional Dark Theme - Clean & Modern */
+    --background: 0 0% 4%;
+    --foreground: 0 0% 98%;
     
-    --card: 222 35% 15%;
-    --card-foreground: 0 0% 100%;
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 98%;
     
-    --popover: 222 35% 15%;
-    --popover-foreground: 0 0% 100%;
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 98%;
     
-    --primary: 16 100% 58%;
-    --primary-foreground: 0 0% 15%;
+    /* Primary: Cyan/Teal - Professional & Vibrant */
+    --primary: 187 85% 53%;
+    --primary-foreground: 0 0% 5%;
     
-    --secondary: 16 100% 50%;
-    --secondary-foreground: 0 0% 15%;
+    /* Secondary: Lighter cyan */
+    --secondary: 187 70% 45%;
+    --secondary-foreground: 0 0% 5%;
     
-    --accent: 24 100% 59%;
-    --accent-foreground: 240 5.9% 10%;
+    /* Accent: Emerald green for success states */
+    --accent: 160 84% 39%;
+    --accent-foreground: 0 0% 98%;
     
-    --muted: 222 47% 20%;
-    --muted-foreground: 240 5% 64.9%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 65%;
     
-    --destructive: 0 62.8% 30.6%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
     
-    --border: 222 47% 20%;
-    --input: 222 47% 20%;
-    --ring: 222 47% 40%;
+    --border: 0 0% 18%;
+    --input: 0 0% 12%;
+    --ring: 187 85% 53%;
     
-    --radius: 0.75rem;
+    --radius: 0.5rem;
     
-    --chart-1: 16 100% 58%;
-    --chart-2: 16 100% 50%;
-    --chart-3: 24 100% 59%;
-    --chart-4: 262 83% 58%;
-    --chart-5: 174 75% 37%;
+    /* Charts: Cyan palette */
+    --chart-1: 187 85% 53%;
+    --chart-2: 160 84% 39%;
+    --chart-3: 199 89% 48%;
+    --chart-4: 172 66% 50%;
+    --chart-5: 142 71% 45%;
   }
   
   * {
@@ -198,12 +203,12 @@
     @apply border border-input bg-background hover:bg-accent hover:text-accent-foreground px-4 py-2 rounded-md transition-colors;
   }
   
-  /* Background patterns */
+  /* Background patterns - Professional grid */
   .bg-comic-pattern {
-    background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgdmlld0JveD0iMCAwIDYwIDYwIj4KICA8ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPgogICAgPHBhdGggZmlsbD0iIzEyMUEyRiIgZD0iTTAgMGg2MHY2MEgweiIvPgogICAgPHBhdGggc3Ryb2tlPSIjMjkzNjVBIiBzdHJva2Utd2lkdGg9IjEiIGQ9Ik0xIDFoNTh2NThIMXoiIG9wYWNpdHk9Ii41Ii8+CiAgICA8Y2lyY2xlIGN4PSIzMCIgY3k9IjMwIiByPSI1IiBzdHJva2U9IiM3QjNGRTQiIHN0cm9rZS13aWR0aD0iLjUiIG9wYWNpdHk9Ii4yIi8+CiAgICA8Y2lyY2xlIGN4PSIzMCIgY3k9IjMwIiByPSIxMCIgc3Ryb2tlPSIjMjBENkM3IiBzdHJva2Utd2lkdGg9Ii41IiBvcGFjaXR5PSIuMiIvPgogICAgPGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMTUiIHN0cm9rZT0iI0ZGNkIyQyIgc3Ryb2tlLXdpZHRoPSIuNSIgb3BhY2l0eT0iLjIiLz4KICA8L2c+Cjwvc3ZnPg==');
-    opacity: 0.1;
-    background-blend-mode: soft-light;
-    background-size: 120px 120px;
+    background-image: 
+      linear-gradient(rgba(34, 211, 238, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(34, 211, 238, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
   }
   
   /* Stats display */
@@ -276,8 +281,8 @@
 
   /* Fix background and spacing */
   .min-h-\[80vh\] {
-    background-color: hsl(222 47% 11% / 0.9);
-    background-image: radial-gradient(circle at 50% 50%, hsl(222 47% 15%), transparent 70%);
+    background-color: hsl(0 0% 4%);
+    background-image: radial-gradient(circle at 50% 50%, hsl(0 0% 8%), transparent 70%);
   }
 
   /* Chat bubble styling */
@@ -294,7 +299,7 @@
     height: 0;
     border-left: 10px solid transparent;
     border-right: 10px solid transparent;
-    border-top: 10px solid #121A2F;
+    border-top: 10px solid hsl(0 0% 7%);
   }
 }
 
@@ -327,19 +332,19 @@
 }
 
 .dice-win {
-  color: #FF6B2C;
+  color: #22D3EE;
   font-weight: bold;
-  text-shadow: 0 0 10px rgba(255, 107, 44, 0.5);
+  text-shadow: 0 0 10px rgba(34, 211, 238, 0.5);
 }
 
 .dice-lose {
-  color: #FF6B2C;
+  color: #94A3B8;
   opacity: 0.7;
 }
 
 /* Custom gradient for dice game */
 .dice-gradient {
-  background: linear-gradient(135deg, #FF6B2C 0%, #E05E22 100%);
+  background: linear-gradient(135deg, #22D3EE 0%, #06B6D4 100%);
 }
 
 .dice-container {

@@ -18,7 +18,7 @@ const LockTokens = () => {
               Lock Your <span className="text-primary">Tokens</span>
             </h1>
             <p className="text-muted-foreground max-w-xl">
-              Secure your LOCKED tokens with advanced vesting mechanisms on Solana. Set custom schedules and time-based releases.
+              Secure any SPL token with advanced vesting mechanisms on Solana. Set custom schedules and time-based releases.
             </p>
           </div>
           
@@ -104,7 +104,7 @@ const LockTokens = () => {
           <div className="space-y-2">
             <h3 className="font-medium">Which tokens can I lock?</h3>
             <p className="text-sm text-muted-foreground">
-              Currently, you can lock LOCKED tokens. Support for other SPL tokens may be added in the future.
+              You can lock any SPL token in your wallet. Simply connect your wallet and select from your available token balances.
             </p>
           </div>
           

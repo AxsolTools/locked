@@ -417,6 +417,14 @@ router.post('/bet', async (req, res) => {
       });
     }
 
+    // Prevent multiple pending bets from same wallet (anti-exploit)
+    if (pendingBets.has(walletAddress)) {
+      return res.status(400).json({ 
+        error: 'You have a pending bet. Please complete it before placing a new bet.',
+        code: 'PENDING_BET_EXISTS'
+      });
+    }
+
     // Check rate limiting
     const rateLimitCheck = checkRateLimit(walletAddress);
     if (!rateLimitCheck.allowed) {
@@ -448,7 +456,11 @@ router.post('/bet', async (req, res) => {
       });
     }
 
-    // Check user's on-chain balance
+    // CRITICAL: Invalidate cache and fetch fresh balance to prevent exploits
+    // This ensures user can't place multiple bets with stale balance data
+    invalidateCache(walletAddress);
+    
+    // Check user's on-chain balance (will fetch fresh after cache invalidation)
     const { sufficient, currentBalance } = await hasSufficientBalance(walletAddress, betAmountNum);
     if (!sufficient) {
       return res.status(400).json({ 
@@ -457,6 +469,8 @@ router.post('/bet', async (req, res) => {
         required: betAmountNum
       });
     }
+    
+    logger.info(`Balance check for ${walletAddress}: Has ${currentBalance} ${TOKEN_SYMBOL}, needs ${betAmountNum} ${TOKEN_SYMBOL}`);
 
     // Validate target range
     if (target < 0 || target > 999999.99) {

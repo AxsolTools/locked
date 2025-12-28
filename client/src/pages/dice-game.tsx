@@ -137,7 +137,7 @@ const DiceGamePage: React.FC = () => {
                   ? { ...bet, result: data.result, won: data.won, profit: data.profit } 
                   : bet
               )
-            );
+              );
             showResultNotification(data.betId, data.result, data.won, data.profit);
           } else if (data.type === 'historical_bets') {
             if (data.bets && Array.isArray(data.bets) && data.bets.length > 0) {
@@ -182,9 +182,9 @@ const DiceGamePage: React.FC = () => {
       try {
         const response = await fetch('/api/dice/leaderboard');
         if (response.ok) {
-          const data = await response.json();
-          if (data && data.leaderboard) {
-            setLeaderboard(data.leaderboard);
+            const data = await response.json();
+            if (data && data.leaderboard) {
+              setLeaderboard(data.leaderboard);
           }
         }
       } catch (error) {
@@ -270,22 +270,22 @@ const DiceGamePage: React.FC = () => {
           <motion.div 
             className="absolute -top-20 -left-10 text-cyan-500/10 text-9xl z-0 pointer-events-none"
             animate={{ rotate: [0, 360], scale: [0.9, 1.1, 0.9] }}
-            transition={{ duration: 15, repeat: Infinity, repeatType: 'reverse' }}
-          >
-            ⚄
-          </motion.div>
-          <motion.div 
+              transition={{ duration: 15, repeat: Infinity, repeatType: 'reverse' }}
+            >
+              ⚄
+            </motion.div>
+            <motion.div 
             className="absolute -bottom-10 -right-10 text-teal-500/10 text-9xl z-0 pointer-events-none"
             animate={{ rotate: [360, 0], scale: [1.1, 0.9, 1.1] }}
-            transition={{ duration: 15, repeat: Infinity, repeatType: 'reverse' }}
-          >
-            ⚂
+              transition={{ duration: 15, repeat: Infinity, repeatType: 'reverse' }}
+            >
+              ⚂
+            </motion.div>
+            
+            <div className="relative z-10">
+              <DiceGame />
+            </div>
           </motion.div>
-          
-          <div className="relative z-10">
-            <DiceGame />
-          </div>
-        </motion.div>
         
         {/* Live Bets Feed */}
         <motion.div className="mt-20" variants={itemVariants}>
@@ -429,10 +429,10 @@ const DiceGamePage: React.FC = () => {
                           {index > 2 && `#${index + 1}`}
                         </TableCell>
                         <TableCell>
-                          {formatAddress(entry.address)}
+                            {formatAddress(entry.address)}
                           {entry.address === publicKey && (
                             <span className="ml-2 text-xs bg-cyan-500 text-black px-1 py-0.5 rounded-sm">YOU</span>
-                          )}
+                            )}
                         </TableCell>
                         <TableCell>
                           <span className={`${parseFloat(entry.profit) > 0 ? 'text-emerald-500' : parseFloat(entry.profit) < 0 ? 'text-red-500' : 'text-gray-400'} font-semibold`}>
@@ -536,4 +536,4 @@ const DiceGamePage: React.FC = () => {
   );
 };
 
-export default DiceGamePage;
+export default DiceGamePage; 

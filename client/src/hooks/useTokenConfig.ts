@@ -31,6 +31,7 @@ const DEFAULT_TOKEN: TokenConfig = {
 };
 
 // Cache the token config to avoid unnecessary refetches
+// Cache is session-based (cleared on page reload) to ensure fresh config on deployment
 let cachedToken: TokenConfig | null = null;
 
 export const useTokenConfig = (): UseTokenConfigReturn => {

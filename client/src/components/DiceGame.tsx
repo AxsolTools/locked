@@ -88,11 +88,11 @@ const DiceGame: React.FC = () => {
         console.error('Error fetching config:', error);
         // Use defaults
         setGameConfig({
-          enabled: true,
-          minBetAmount: "1",
-          maxBetAmount: "10000",
-          decimalPlaces: 2,
-          payoutEnabled: true,
+        enabled: true,
+        minBetAmount: "1",
+        maxBetAmount: "10000",
+        decimalPlaces: 2,
+        payoutEnabled: true,
           houseEdge: 1.5,
           maxProfit: "5000",
           directBetting: true
@@ -116,11 +116,11 @@ const DiceGame: React.FC = () => {
       const response = await axios.get(`/api/dice/balance/${publicKey}`);
       setOnChainBalance(response.data.balance || 0);
       setIsWalletRegistered(response.data.registered || false);
-    } catch (error) {
+      } catch (error) {
       console.error('Error fetching balance:', error);
-    } finally {
+      } finally {
       setIsLoadingBalance(false);
-    }
+      }
   }, [publicKey]);
 
   useEffect(() => {
@@ -200,16 +200,16 @@ const DiceGame: React.FC = () => {
     
     const minBet = parseFloat(gameConfig.minBetAmount);
     const maxBet = parseFloat(gameConfig.maxBetAmount);
-    
+        
     if (betAmount < minBet || betAmount > maxBet) {
-      toast({
+          toast({
         title: "Invalid Bet",
         description: `Bet must be between ${minBet} and ${maxBet} ${token.symbol}`,
-        variant: "destructive",
-      });
+            variant: "destructive",
+          });
       return;
-    }
-
+        }
+        
     if (betAmount > onChainBalance) {
       toast({
         title: "Insufficient Balance",
@@ -226,9 +226,9 @@ const DiceGame: React.FC = () => {
       // Place bet
       const betResponse = await axios.post('/api/dice/bet', {
         walletAddress: publicKey,
-        betAmount: betAmount.toString(),
-        target: prediction,
-        isOver: rollType === 'over',
+            betAmount: betAmount.toString(),
+            target: prediction,
+            isOver: rollType === 'over',
         clientSeed
       });
 
@@ -240,15 +240,15 @@ const DiceGame: React.FC = () => {
 
       // Roll and execute on-chain transaction
       const rollResponse = await axios.post('/api/dice/roll', {
-        betId,
+            betId,
         walletAddress: publicKey,
-        clientSeed
-      });
-
+            clientSeed
+          });
+          
       if (!rollResponse.data.success) {
         throw new Error(rollResponse.data.error || 'Failed to roll');
       }
-
+      
       const result: GameResult = {
         roll: rollResponse.data.result,
         won: rollResponse.data.won,
@@ -262,16 +262,16 @@ const DiceGame: React.FC = () => {
           serverSeedHash: rollResponse.data.serverSeedHash
         }
       };
-
+      
       setGameResult(result);
       setOnChainBalance(rollResponse.data.newBalance);
       
       // Generate new client seed
       generateClientSeed();
-
+            
       // Show result toast
       if (result.won) {
-        toast({
+                    toast({
           title: "🎉 You Won!",
           description: `+${result.profit} ${token.symbol}`,
           action: result.txSignature ? (
@@ -283,9 +283,9 @@ const DiceGame: React.FC = () => {
               View TX
             </Button>
           ) : undefined,
-        });
-      } else {
-        toast({
+                    });
+                  } else {
+                    toast({
           title: "😔 You Lost",
           description: `${result.profit} ${token.symbol}`,
           action: result.txSignature ? (
@@ -297,31 +297,31 @@ const DiceGame: React.FC = () => {
               View TX
             </Button>
           ) : undefined,
-        });
-      }
+                    });
+                  }
     } catch (error: any) {
       console.error('Roll error:', error);
-      
+                  
       // Handle specific error codes
       if (error.response?.data?.code === 'WALLET_NOT_REGISTERED') {
-        toast({
+                  toast({
           title: "Wallet Not Registered",
           description: "Please reconnect your wallet to enable betting",
-          variant: "destructive",
-        });
+                    variant: "destructive",
+                  });
       } else if (error.response?.data?.code === 'HOUSE_INSUFFICIENT_FUNDS') {
-        toast({
+                toast({
           title: "Bet Too Large",
           description: "House cannot cover this bet. Try a smaller amount.",
-          variant: "destructive",
+                  variant: "destructive",
         });
-      } else {
-        toast({
+          } else {
+            toast({
           title: "Error",
           description: error.response?.data?.error || error.message || "Failed to complete bet",
-          variant: "destructive",
-        });
-      }
+              variant: "destructive",
+            });
+          }
       
       // Refresh balance
       fetchBalance();
@@ -428,22 +428,22 @@ const DiceGame: React.FC = () => {
 
       {/* Game Card */}
       <Card className="w-full max-w-3xl mx-auto bg-card border-border">
-        <CardHeader>
+      <CardHeader>
           <CardTitle className="text-center text-2xl bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
             {token.symbol} Dice Game
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Controls */}
-            <div className="space-y-6">
-              <div className="space-y-2">
+          <div className="space-y-6">
+            <div className="space-y-2">
                 <label className="block text-sm font-medium text-muted-foreground">Bet Amount</label>
-                <Input
-                  type="number"
-                  value={betAmount}
-                  onChange={(e) => setBetAmount(Number(e.target.value))}
-                  min={gameConfig ? parseFloat(gameConfig.minBetAmount) : 1}
+              <Input
+                type="number"
+                value={betAmount}
+                onChange={(e) => setBetAmount(Number(e.target.value))}
+                min={gameConfig ? parseFloat(gameConfig.minBetAmount) : 1}
                   max={Math.min(
                     gameConfig ? parseFloat(gameConfig.maxBetAmount) : 10000,
                     onChainBalance
@@ -454,81 +454,81 @@ const DiceGame: React.FC = () => {
                   <span>Min: {gameConfig?.minBetAmount}</span>
                   <span>Available: {onChainBalance.toFixed(4)}</span>
                 </div>
-              </div>
-              
-              <div className="space-y-2">
+            </div>
+            
+            <div className="space-y-2">
                 <label className="block text-sm font-medium text-muted-foreground">
                   Target: {prediction.toLocaleString()}
-                </label>
-                <Slider
-                  value={[prediction]}
-                  onValueChange={(value) => setPrediction(value[0])}
-                  min={1}
-                  max={999998}
-                  step={1000}
-                  className="w-full"
-                />
-              </div>
-              
-              <div className="space-y-2">
+              </label>
+              <Slider
+                value={[prediction]}
+                onValueChange={(value) => setPrediction(value[0])}
+                min={1}
+                max={999998}
+                step={1000}
+                className="w-full"
+              />
+            </div>
+            
+            <div className="space-y-2">
                 <label className="block text-sm font-medium text-muted-foreground">Roll Type</label>
-                <div className="flex gap-2">
-                  <Button
-                    variant={rollType === 'under' ? 'default' : 'outline'}
-                    onClick={() => setRollType('under')}
+              <div className="flex gap-2">
+                <Button
+                  variant={rollType === 'under' ? 'default' : 'outline'}
+                  onClick={() => setRollType('under')}
                     className={rollType === 'under' ? 'bg-primary hover:bg-primary/90' : ''}
-                  >
-                    Roll Under
-                  </Button>
-                  <Button
-                    variant={rollType === 'over' ? 'default' : 'outline'}
-                    onClick={() => setRollType('over')}
+                >
+                  Roll Under
+                </Button>
+                <Button
+                  variant={rollType === 'over' ? 'default' : 'outline'}
+                  onClick={() => setRollType('over')}
                     className={rollType === 'over' ? 'bg-secondary hover:bg-secondary/90' : ''}
-                  >
-                    Roll Over
-                  </Button>
-                </div>
+                >
+                  Roll Over
+                </Button>
               </div>
-              
+            </div>
+            
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-background/50 rounded-lg p-3 border border-border">
                   <p className="text-xs text-muted-foreground">Win Chance</p>
                   <p className="text-lg font-bold text-foreground">{calculateWinChance()}%</p>
-                </div>
+              </div>
                 <div className="bg-background/50 rounded-lg p-3 border border-border">
                   <p className="text-xs text-muted-foreground">Multiplier</p>
                   <p className="text-lg font-bold text-foreground">{calculateMultiplier()}x</p>
-                </div>
-              </div>
-              
+            </div>
+            </div>
+            
               <div className="bg-background/50 rounded-lg p-3 border border-border">
                 <p className="text-xs text-muted-foreground">Potential Profit</p>
                 <p className="text-lg font-bold text-accent">+{calculateProfit()} {token.symbol}</p>
-              </div>
-              
-              <div className="space-y-2">
+            </div>
+            
+            <div className="space-y-2">
                 <label className="block text-xs text-muted-foreground">Client Seed</label>
                 <div className="flex gap-2">
                   <code className="flex-1 text-xs bg-background/50 p-2 rounded overflow-hidden text-ellipsis text-muted-foreground border border-border">
-                    {clientSeed}
+                {clientSeed}
                   </code>
                   <Button variant="ghost" size="sm" onClick={generateClientSeed}>
                     <RefreshCw className="h-4 w-4" />
-                  </Button>
+              </Button>
                 </div>
-              </div>
             </div>
-            
+          </div>
+          
             {/* Result Area */}
-            <div className="space-y-6">
-              <Button
-                onClick={handleRoll}
+          <div className="space-y-6">
+            <Button
+              onClick={handleRoll}
                 disabled={isRolling || !gameConfig?.enabled || onChainBalance < betAmount || (!isWalletRegistered && !isRegisteredWithBackend)}
                 className="w-full h-16 text-lg bg-gradient-to-r from-primary to-secondary hover:opacity-90"
-              >
-                {isRolling ? 'Rolling...' : 'Roll Dice'}
-              </Button>
-              
+            >
+              {isRolling ? 'Rolling...' : 'Roll Dice'}
+            </Button>
+            
               {onChainBalance < betAmount && (
                 <p className="text-center text-amber-500 text-sm">
                   Insufficient balance. You need more {token.symbol} tokens.
@@ -539,85 +539,85 @@ const DiceGame: React.FC = () => {
                 <p className="text-center text-amber-500 text-sm">
                   Wallet not registered. Please reconnect your wallet.
                 </p>
-              )}
-              
-              {gameResult && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
+            )}
+            
+            {gameResult && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
                   className="p-4 rounded-lg border border-border bg-background/50 space-y-4"
-                >
-                  <div className="text-center">
+              >
+                <div className="text-center">
                     <div className="text-sm text-muted-foreground">Roll Result</div>
                     <div className="text-5xl font-bold my-2 text-foreground">
                       {gameResult.roll.toLocaleString()}
-                    </div>
-                    <div className={`text-lg font-semibold ${gameResult.won ? 'text-green-500' : 'text-red-500'}`}>
-                      {gameResult.won ? '🎉 YOU WON!' : '😔 YOU LOST'}
-                    </div>
                   </div>
-                  
-                  <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className={`text-lg font-semibold ${gameResult.won ? 'text-green-500' : 'text-red-500'}`}>
+                      {gameResult.won ? '🎉 YOU WON!' : '😔 YOU LOST'}
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-2 text-sm">
                     <div className="text-muted-foreground">Target:</div>
                     <div className="text-right font-medium text-foreground">
                       {rollType === 'under' ? `< ${prediction.toLocaleString()}` : `> ${prediction.toLocaleString()}`}
-                    </div>
-                    
-                    <div className="text-muted-foreground">Profit:</div>
-                    <div className={`text-right font-medium ${parseFloat(gameResult.profit) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {parseFloat(gameResult.profit) >= 0 ? `+${gameResult.profit}` : gameResult.profit} {token.symbol}
-                    </div>
                   </div>
                   
+                    <div className="text-muted-foreground">Profit:</div>
+                  <div className={`text-right font-medium ${parseFloat(gameResult.profit) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {parseFloat(gameResult.profit) >= 0 ? `+${gameResult.profit}` : gameResult.profit} {token.symbol}
+                  </div>
+                </div>
+                
                   {gameResult.txSignature && (
-                    <Button 
-                      variant="outline" 
-                      size="sm"
+                  <Button 
+                    variant="outline" 
+                    size="sm"
                       onClick={() => window.open(getExplorerUrl(gameResult.txSignature!), '_blank')}
-                      className="w-full text-xs"
-                    >
+                    className="w-full text-xs"
+                  >
                       <ExternalLink className="h-3 w-3 mr-2" />
                       View Transaction
-                    </Button>
-                  )}
-                  
+                  </Button>
+                )}
+                
                   {gameResult.verification && (
-                    <Button 
+                <Button
                       variant="ghost" 
                       size="sm"
                       onClick={verifyRoll}
                       className="w-full text-xs"
-                    >
+                >
                       Verify Fairness
-                    </Button>
+                </Button>
                   )}
-                </motion.div>
-              )}
-              
-              {!gameResult && !isRolling && (
+              </motion.div>
+            )}
+            
+            {!gameResult && !isRolling && (
                 <div className="text-center text-muted-foreground italic py-10">
-                  Results will appear here after you roll.
-                </div>
-              )}
-              
-              {isRolling && (
+                Results will appear here after you roll.
+              </div>
+            )}
+            
+            {isRolling && (
                 <div className="flex flex-col items-center justify-center py-10">
-                  <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
                     className="text-6xl mb-4"
-                  >
-                    🎲
-                  </motion.div>
+              >
+                🎲
+              </motion.div>
                   <p className="text-muted-foreground">Rolling & processing transaction...</p>
-                </div>
-              )}
-            </div>
           </div>
-        </CardContent>
-      </Card>
+        )}
+              </div>
+              </div>
+      </CardContent>
+    </Card>
     </div>
   );
 };
 
-export default DiceGame;
+export default DiceGame; 

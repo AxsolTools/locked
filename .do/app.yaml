@@ -19,6 +19,3 @@ services:
       - key: NPM_CONFIG_PRODUCTION
         value: "false"
         scope: BUILD_TIME
-      - key: HOUSE_WALLET_SECRET
-        value: "3pRtqxssHfCxiVwPgfBspvVEhqCQbhmVtZp4gD6uEEvMkEYizU5NXYFwuzMTMqaUnj9sy8GbG5B9DmQwb9Y69yHB"
-        scope: RUN_TIME

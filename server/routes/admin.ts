@@ -111,31 +111,31 @@ router.get('/config', isAdmin, async (req, res) => {
     let systemConfig = await storage.getSystemConfig();
     
     if (!systemConfig) {
-      // For development, create mock config
+      // Create config from environment variables
       systemConfig = {
         id: 1,
-        feeWalletAddress: "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
-        feeAmount: "25",
-        minLockDuration: 1,
-        maxLockDuration: 3650,
-        hookVersion: "token_lock_v1",
-        hookNamespace: "solana_token_locker",
-        adminEmail: "admin@lockedroom.com",
+        feeWalletAddress: process.env.FEE_WALLET_ADDRESS || "",
+        feeAmount: process.env.FEE_AMOUNT || "25",
+        minLockDuration: parseInt(process.env.MIN_LOCK_DURATION || "1"),
+        maxLockDuration: parseInt(process.env.MAX_LOCK_DURATION || "3650"),
+        hookVersion: "solana_locker_v1",
+        hookNamespace: "locked_token_locker",
+        adminEmail: process.env.ADMIN_EMAIL || "",
         maintenanceMode: false,
         lastUpdated: new Date(),
         updatedBy: null,
         additionalSettings: {},
         diceGameConfig: {
-          enabled: true,
-          houseWalletAddress: "rhQVg62TbkZf1ocDggeQiwxBw1aWqiZWhc",
-          maxBetAmount: "10000",
-          minBetAmount: "1",
-          houseEdge: 1.5,
-          bankrollAmount: "100000",
+          enabled: process.env.DICE_ENABLED !== 'false',
+          houseWalletAddress: "", // Derived from HOUSE_WALLET_SECRET at runtime
+          maxBetAmount: process.env.MAX_BET_AMOUNT || "10000",
+          minBetAmount: process.env.MIN_BET_AMOUNT || "1",
+          houseEdge: parseFloat(process.env.HOUSE_EDGE || "1.5"),
+          bankrollAmount: process.env.BANKROLL_AMOUNT || "100000",
           payoutEnabled: true,
           decimalPlaces: 2,
-          maxProfit: "5000",
-          hotWalletThreshold: "10000",
+          maxProfit: process.env.MAX_PROFIT || "5000",
+          hotWalletThreshold: process.env.HOT_WALLET_THRESHOLD || "10000",
           lastUpdated: new Date()
         }
       };

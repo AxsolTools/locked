@@ -226,6 +226,10 @@ router.post('/create', async (req: Request, res: Response) => {
     // Log the vesting creation
     console.log('[VESTING] Created vesting schedule:', vestingSchedule.id, 'for', walletAddress, 'duration:', seconds, 'seconds');
 
+    // Get updated balance after lock
+    invalidateCache(walletAddress);
+    const updatedBalance = await getTokenBalance(walletAddress, tokenMint);
+
     res.json({
       success: true,
       vestingId: vestingSchedule.id,
@@ -240,7 +244,7 @@ router.post('/create', async (req: Request, res: Response) => {
         durationSeconds: seconds,
         releaseDate: new Date(vestingSchedule.endTime).toISOString()
       },
-      newBalance
+      newBalance: updatedBalance.balance
     });
   } catch (error: any) {
     console.error('[VESTING] Error creating vesting schedule:', error);

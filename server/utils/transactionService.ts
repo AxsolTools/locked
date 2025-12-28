@@ -554,11 +554,13 @@ export async function getTransactionStatus(signature: string): Promise<{
 
 /**
  * Get house wallet balance
+ * Uses the same approach as balanceService - sum all token accounts for the mint
  */
 export async function getHouseBalance(tokenMint?: string): Promise<number> {
   try {
     const houseKeypair = getHouseWallet();
     if (!houseKeypair) {
+      console.log('[TX] House wallet not initialized for balance check');
       return 0;
     }
     
@@ -566,24 +568,36 @@ export async function getHouseBalance(tokenMint?: string): Promise<number> {
     const mint = tokenMint ? new PublicKey(tokenMint) : getTokenMint();
     
     if (!mint) {
+      console.log('[TX] Token mint not configured for house balance check');
       return 0;
     }
     
-    const tokenAccount = await getAssociatedTokenAddress(
-      mint, 
-      houseKeypair.publicKey
+    // Use getParsedTokenAccountsByOwner to find ALL token accounts for this mint
+    // This handles both standard SPL Token and Token-2022 accounts
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+      houseKeypair.publicKey,
+      { mint }
     );
     
-    try {
-      const account = await getAccount(connection, tokenAccount);
-      const decimals = getTokenDecimals();
-      return Number(account.amount) / Math.pow(10, decimals);
-    } catch (error) {
-      if (error instanceof TokenAccountNotFoundError) {
-        return 0;
+    let rawSum = 0n;
+    let decimalsOnChain: number | null = null;
+    
+    for (const acc of tokenAccounts.value) {
+      const parsed = (acc.account.data as any)?.parsed;
+      const tokenAmount = parsed?.info?.tokenAmount;
+      if (!tokenAmount?.amount) continue;
+      rawSum += BigInt(tokenAmount.amount);
+      if (typeof tokenAmount.decimals === 'number') {
+        decimalsOnChain = tokenAmount.decimals;
       }
-      throw error;
     }
+    
+    const finalDecimals = decimalsOnChain ?? getTokenDecimals();
+    const balance = Number(rawSum.toString()) / Math.pow(10, finalDecimals);
+    
+    console.log(`[TX] House balance: ${balance} (${tokenAccounts.value.length} accounts, raw=${rawSum.toString()})`);
+    
+    return balance;
   } catch (error) {
     console.error('Error getting house balance:', error);
     return 0;

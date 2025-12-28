@@ -28,7 +28,7 @@ import {
 } from '@solana/spl-token';
 import { storage } from '../storage';
 import { decryptPrivateKey } from '../fileStorage';
-import { getHouseKeypair } from './solanaWallet';
+import { getHouseWallet } from './solanaWallet';
 import { invalidateCache, invalidateTokenCache } from './balanceService';
 import bs58 from 'bs58';
 
@@ -275,7 +275,7 @@ export async function transferFromUser(
     }
     
     // Get house wallet address
-    const houseKeypair = getHouseKeypair();
+    const houseKeypair = getHouseWallet();
     if (!houseKeypair) {
       return { success: false, error: 'House wallet not initialized', attempts: 0 };
     }
@@ -327,7 +327,7 @@ export async function transferToUser(
     }
     
     // Get house keypair
-    const houseKeypair = getHouseKeypair();
+    const houseKeypair = getHouseWallet();
     if (!houseKeypair) {
       return { success: false, error: 'House wallet not initialized', attempts: 0 };
     }
@@ -462,7 +462,7 @@ export async function getTransactionStatus(signature: string): Promise<{
  */
 export async function getHouseBalance(tokenMint?: string): Promise<number> {
   try {
-    const houseKeypair = getHouseKeypair();
+    const houseKeypair = getHouseWallet();
     if (!houseKeypair) {
       return 0;
     }

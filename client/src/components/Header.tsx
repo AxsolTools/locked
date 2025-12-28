@@ -51,9 +51,7 @@ const Header = () => {
     <header className="sticky top-0 z-50 w-full bg-[#0a0a0a] border-b border-zinc-800/50 py-3 px-4 md:px-6 shadow-sm">
       <div className="max-w-7xl mx-auto flex justify-between items-center">
         <div className="flex items-center space-x-2">
-          <div className="h-10 w-10 bg-gradient-to-r from-cyan-500 to-teal-500 rounded-lg flex items-center justify-center">
-            <Lock className="h-6 w-6 text-black" />
-          </div>
+          <img src="/favicon.png" alt="LOCKED" className="h-10 w-10 rounded-lg" />
           <Link href="/" className="text-xl md:text-2xl font-outfit font-bold text-foreground whitespace-nowrap">
             <span className="bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent">LOCKED</span>
           </Link>

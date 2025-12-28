@@ -41,14 +41,14 @@ const RobotMascot: React.FC<RobotMascotProps> = ({
           </div>
           
           {/* Robot mouth */}
-          <div className="mouth w-1/2 h-2 bg-orange-400 rounded-full"></div>
+          <div className="mouth w-1/2 h-2 bg-cyan-400 rounded-full"></div>
           
           {/* Antennas */}
-          <div className="antenna-left absolute -top-3 left-1/4 w-1 h-5 bg-orange-400"></div>
-          <div className="antenna-left-ball absolute -top-4 left-1/4 w-3 h-3 rounded-full bg-orange-400"></div>
+          <div className="antenna-left absolute -top-3 left-1/4 w-1 h-5 bg-cyan-400"></div>
+          <div className="antenna-left-ball absolute -top-4 left-1/4 w-3 h-3 rounded-full bg-cyan-400"></div>
           
-          <div className="antenna-right absolute -top-3 right-1/4 w-1 h-5 bg-orange-400"></div>
-          <div className="antenna-right-ball absolute -top-4 right-1/4 w-3 h-3 rounded-full bg-orange-400"></div>
+          <div className="antenna-right absolute -top-3 right-1/4 w-1 h-5 bg-cyan-400"></div>
+          <div className="antenna-right-ball absolute -top-4 right-1/4 w-3 h-3 rounded-full bg-cyan-400"></div>
         </div>
         
         {/* Robot body */}

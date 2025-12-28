@@ -25,6 +25,7 @@ import {
   getAccount,
   TOKEN_PROGRAM_ID,
   TOKEN_2022_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
   TokenAccountNotFoundError,
   getMint
 } from '@solana/spl-token';
@@ -96,7 +97,10 @@ async function findSourceTokenAccount(
   requiredRawAmount: bigint,
   fallbackDecimals: number
 ): Promise<{ source: PublicKey; decimals: number } | null> {
+  console.log(`[TX] Finding source token account for owner=${owner.toBase58()}, mint=${mint.toBase58()}, required=${requiredRawAmount.toString()}`);
+  
   const resp = await connection.getParsedTokenAccountsByOwner(owner, { mint });
+  console.log(`[TX] Found ${resp.value.length} token accounts for owner`);
 
   const candidates: ParsedTokenAccountInfo[] = [];
   for (const item of resp.value) {
@@ -107,6 +111,8 @@ async function findSourceTokenAccount(
     const rawAmount = BigInt(tokenAmount.amount);
     const decimals = typeof tokenAmount.decimals === 'number' ? tokenAmount.decimals : fallbackDecimals;
 
+    console.log(`[TX] Token account ${item.pubkey.toBase58()}: raw=${rawAmount.toString()}, decimals=${decimals}`);
+    
     candidates.push({
       pubkey: item.pubkey,
       rawAmount,
@@ -114,7 +120,10 @@ async function findSourceTokenAccount(
     });
   }
 
-  if (candidates.length === 0) return null;
+  if (candidates.length === 0) {
+    console.log(`[TX] No token accounts found for owner=${owner.toBase58()}, mint=${mint.toBase58()}`);
+    return null;
+  }
 
   // Prefer an account that can cover the amount. If multiple, choose the largest (reduces chance of dust/close issues).
   const sufficient = candidates
@@ -122,11 +131,12 @@ async function findSourceTokenAccount(
     .sort((a, b) => (a.rawAmount > b.rawAmount ? -1 : a.rawAmount < b.rawAmount ? 1 : 0));
 
   if (sufficient.length > 0) {
+    console.log(`[TX] Selected source account: ${sufficient[0].pubkey.toBase58()} with balance ${sufficient[0].rawAmount.toString()}`);
     return { source: sufficient[0].pubkey, decimals: sufficient[0].decimals };
   }
 
   // No single account covers it (rare, but possible). We don't implement multi-account aggregation transfers here.
-  // Caller should fail with a clear error.
+  console.log(`[TX] No account with sufficient balance. Required: ${requiredRawAmount.toString()}, max available: ${candidates[0]?.rawAmount.toString() || '0'}`);
   return null;
 }
 
@@ -181,6 +191,7 @@ async function getTokenProgramId(connection: Connection, mint: PublicKey): Promi
 
 /**
  * Ensure token account exists, create if not
+ * Properly handles both SPL Token and Token-2022 programs
  */
 async function ensureTokenAccount(
   connection: Connection,
@@ -191,26 +202,34 @@ async function ensureTokenAccount(
   // Detect which token program this mint uses
   const tokenProgramId = await getTokenProgramId(connection, mint);
   
-  // Get ATA with correct program
+  console.log(`[TX] ensureTokenAccount: mint=${mint.toBase58()}, owner=${owner.toBase58()}, program=${tokenProgramId.toBase58()}`);
+  
+  // Get ATA with correct program - MUST pass both tokenProgramId and ASSOCIATED_TOKEN_PROGRAM_ID
   const tokenAccount = await getAssociatedTokenAddress(
     mint, 
     owner, 
     false, // allowOwnerOffCurve
-    tokenProgramId
+    tokenProgramId,
+    ASSOCIATED_TOKEN_PROGRAM_ID
   );
+  
+  console.log(`[TX] Computed ATA: ${tokenAccount.toBase58()}`);
   
   try {
     await getAccount(connection, tokenAccount, 'confirmed', tokenProgramId);
+    console.log(`[TX] Token account exists: ${tokenAccount.toBase58()}`);
     return { address: tokenAccount };
   } catch (error) {
     if (error instanceof TokenAccountNotFoundError) {
       // Token account doesn't exist, create instruction with correct program
+      console.log(`[TX] Token account does not exist, creating: ${tokenAccount.toBase58()}`);
       const instruction = createAssociatedTokenAccountInstruction(
         payer.publicKey,
         tokenAccount,
         owner,
         mint,
-        tokenProgramId
+        tokenProgramId,
+        ASSOCIATED_TOKEN_PROGRAM_ID
       );
       return { address: tokenAccount, instruction };
     }
@@ -285,6 +304,21 @@ async function buildTransferTransaction(
 }
 
 /**
+ * Check if wallet has enough SOL for transaction fees
+ */
+async function checkSolBalance(connection: Connection, wallet: PublicKey): Promise<{ hasSol: boolean; balance: number }> {
+  try {
+    const balance = await connection.getBalance(wallet);
+    const solBalance = balance / LAMPORTS_PER_SOL;
+    console.log(`[TX] SOL balance for ${wallet.toBase58()}: ${solBalance} SOL`);
+    return { hasSol: balance > 5000000, balance: solBalance }; // Need at least 0.005 SOL for fees
+  } catch (error) {
+    console.error(`[TX] Error checking SOL balance:`, error);
+    return { hasSol: false, balance: 0 };
+  }
+}
+
+/**
  * Send and confirm transaction with retry logic
  */
 async function sendWithRetry(
@@ -296,6 +330,16 @@ async function sendWithRetry(
   let lastError: Error | null = null;
   let attempts = 0;
   
+  // Check if payer has enough SOL for fees
+  const { hasSol, balance } = await checkSolBalance(connection, signers[0].publicKey);
+  if (!hasSol) {
+    return {
+      success: false,
+      error: `Insufficient SOL for transaction fees. Wallet ${signers[0].publicKey.toBase58()} has ${balance} SOL, needs at least 0.005 SOL`,
+      attempts: 0
+    };
+  }
+  
   for (let i = 0; i < maxRetries; i++) {
     attempts++;
     try {
@@ -303,6 +347,8 @@ async function sendWithRetry(
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
       transaction.recentBlockhash = blockhash;
       transaction.feePayer = signers[0].publicKey;
+      
+      console.log(`[TX] Sending transaction attempt ${attempts}, feePayer: ${signers[0].publicKey.toBase58()}`);
       
       // Sign and send
       const signature = await sendAndConfirmTransaction(
@@ -315,6 +361,8 @@ async function sendWithRetry(
         }
       );
       
+      console.log(`[TX] Transaction confirmed: ${signature}`);
+      
       return {
         success: true,
         signature,
@@ -323,6 +371,11 @@ async function sendWithRetry(
     } catch (error: any) {
       lastError = error;
       console.error(`Transaction attempt ${attempts} failed:`, error.message);
+      
+      // Log more details if available
+      if (error.logs) {
+        console.error(`Transaction logs:`, error.logs);
+      }
       
       // Check if error is retryable
       const isRetryable = 

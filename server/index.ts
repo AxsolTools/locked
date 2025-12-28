@@ -316,16 +316,32 @@ app.get('/api/user/profile', async (req, res) => {
   }
 });
 
-// Redirect client routes to Vite dev server
-app.use('*', (req, res) => {
-  if (!req.originalUrl.startsWith('/api')) {
-    const redirectUrl = `http://localhost:5173${req.originalUrl}`;
-    log(`Redirecting to: ${redirectUrl}`);
-    return res.redirect(302, redirectUrl);
-  }
+// Serve static files in production, redirect to Vite dev server in development
+if (process.env.NODE_ENV === 'production') {
+  // Serve static files from the built client
+  const staticPath = path.join(__dirname, 'public');
+  app.use(express.static(staticPath));
   
-  res.status(404).json({ error: 'API endpoint not found' });
-});
+  // Handle client-side routing - serve index.html for all non-API routes
+  app.get('*', (req, res) => {
+    if (!req.originalUrl.startsWith('/api')) {
+      res.sendFile(path.join(staticPath, 'index.html'));
+    } else {
+      res.status(404).json({ error: 'API endpoint not found' });
+    }
+  });
+} else {
+  // Development: redirect to Vite dev server
+  app.use('*', (req, res) => {
+    if (!req.originalUrl.startsWith('/api')) {
+      const redirectUrl = `http://localhost:5173${req.originalUrl}`;
+      log(`Redirecting to: ${redirectUrl}`);
+      return res.redirect(302, redirectUrl);
+    }
+    
+    res.status(404).json({ error: 'API endpoint not found' });
+  });
+}
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

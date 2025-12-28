@@ -22,7 +22,11 @@ services:
       - key: PORT
         value: "5000"
       - key: SOLANA_RPC_URLS
-        value: "https://api.mainnet-beta.solana.com"
+        value: "https://mainnet.helius-rpc.com/?api-key=f7ed61b3-6e69-4ff8-b086-0f361e9dffb2"
+      - key: HELIUS_API_KEY
+        value: "f7ed61b3-6e69-4ff8-b086-0f361e9dffb2"
+      - key: HELIUS_RPC_URL
+        value: "https://mainnet.helius-rpc.com/?api-key=f7ed61b3-6e69-4ff8-b086-0f361e9dffb2"
       - key: LOCKED_TOKEN_MINT
         value: "B7tP6jNAcSmnvcuKsTFdvTAJHMkEQaXse8TMxoq2pump"
       - key: LOCKED_TOKEN_SYMBOL

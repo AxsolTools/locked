@@ -235,7 +235,7 @@ const DiceGamePage: React.FC = () => {
           </div>
           
           <motion.h1 
-            className="text-5xl font-bold mb-4 bg-gradient-to-r from-purple-500 via-pink-500 to-purple-500 bg-clip-text text-transparent"
+            className="text-5xl font-bold mb-4 bg-gradient-to-r from-cyan-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent"
             animate={{ scale: [1, 1.05, 1] }}
             transition={{ duration: 2, repeat: Infinity, repeatType: 'reverse' }}
           >
@@ -246,19 +246,19 @@ const DiceGamePage: React.FC = () => {
           </motion.p>
           
           <motion.div className="flex flex-wrap justify-center gap-8 mt-10" variants={itemVariants}>
-            <motion.div className="flex items-center gap-2 text-purple-500" animate={floatingAnimation}>
+            <motion.div className="flex items-center gap-2 text-cyan-400" animate={floatingAnimation}>
               <Dice className="h-5 w-5" />
               <span>Provably Fair</span>
             </motion.div>
-            <motion.div className="flex items-center gap-2 text-pink-500" animate={floatingAnimation}>
+            <motion.div className="flex items-center gap-2 text-emerald-400" animate={floatingAnimation}>
               <Sparkles className="h-5 w-5" />
               <span>Instant Results</span>
             </motion.div>
-            <motion.div className="flex items-center gap-2 text-purple-500" animate={floatingAnimation}>
+            <motion.div className="flex items-center gap-2 text-teal-400" animate={floatingAnimation}>
               <Trophy className="h-5 w-5" />
               <span>Leaderboard</span>
             </motion.div>
-            <motion.div className="flex items-center gap-2 text-pink-500" animate={floatingAnimation}>
+            <motion.div className="flex items-center gap-2 text-cyan-400" animate={floatingAnimation}>
               <Coins className="h-5 w-5" />
               <span>Win {token.symbol}</span>
             </motion.div>
@@ -268,14 +268,14 @@ const DiceGamePage: React.FC = () => {
         {/* Main game area */}
         <motion.div variants={itemVariants} className="relative">
           <motion.div 
-            className="absolute -top-20 -left-10 text-purple-500/10 text-9xl z-0 pointer-events-none"
+            className="absolute -top-20 -left-10 text-cyan-500/10 text-9xl z-0 pointer-events-none"
             animate={{ rotate: [0, 360], scale: [0.9, 1.1, 0.9] }}
             transition={{ duration: 15, repeat: Infinity, repeatType: 'reverse' }}
           >
             ⚄
           </motion.div>
           <motion.div 
-            className="absolute -bottom-10 -right-10 text-pink-600/10 text-9xl z-0 pointer-events-none"
+            className="absolute -bottom-10 -right-10 text-teal-500/10 text-9xl z-0 pointer-events-none"
             animate={{ rotate: [360, 0], scale: [1.1, 0.9, 1.1] }}
             transition={{ duration: 15, repeat: Infinity, repeatType: 'reverse' }}
           >
@@ -290,15 +290,15 @@ const DiceGamePage: React.FC = () => {
         {/* Live Bets Feed */}
         <motion.div className="mt-20" variants={itemVariants}>
           <motion.h2 
-            className="text-3xl font-bold text-center mb-8 bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent"
+            className="text-3xl font-bold text-center mb-8 bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent"
             animate={{ opacity: [0.7, 1, 0.7] }}
             transition={{ duration: 3, repeat: Infinity }}
           >
             <Sparkles className="inline-block mr-2 mb-1" /> Live Bets
             {wsConnected ? (
               <span className="ml-2 inline-flex h-3 w-3 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
               </span>
             ) : (
               <span className="ml-2 inline-flex h-3 w-3 relative">
@@ -308,17 +308,17 @@ const DiceGamePage: React.FC = () => {
             )}
           </motion.h2>
           
-          <Card className="overflow-hidden bg-gray-800/50 border-purple-500/30">
+          <Card className="overflow-hidden bg-zinc-900/80 border-zinc-800">
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-900/50">
-                    <TableHead className="w-[60px] text-purple-500">Time</TableHead>
-                    <TableHead className="text-purple-500">Player</TableHead>
-                    <TableHead className="text-purple-500">Bet Amount</TableHead>
-                    <TableHead className="text-purple-500">Target</TableHead>
-                    <TableHead className="text-purple-500">Result</TableHead>
-                    <TableHead className="text-purple-500 text-right">Profit/Loss</TableHead>
+                  <TableRow className="bg-zinc-950/50">
+                    <TableHead className="w-[60px] text-cyan-400">Time</TableHead>
+                    <TableHead className="text-cyan-400">Player</TableHead>
+                    <TableHead className="text-cyan-400">Bet Amount</TableHead>
+                    <TableHead className="text-cyan-400">Target</TableHead>
+                    <TableHead className="text-cyan-400">Result</TableHead>
+                    <TableHead className="text-cyan-400 text-right">Profit/Loss</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -332,7 +332,7 @@ const DiceGamePage: React.FC = () => {
                     liveBets.map((bet, index) => (
                       <motion.tr
                         key={bet.id}
-                        initial={{ opacity: 0, backgroundColor: index === 0 ? 'rgba(168, 85, 247, 0.2)' : '' }}
+                        initial={{ opacity: 0, backgroundColor: index === 0 ? 'rgba(34, 211, 238, 0.1)' : '' }}
                         animate={{ 
                           opacity: 1, 
                           backgroundColor: bet.result !== undefined 
@@ -340,16 +340,16 @@ const DiceGamePage: React.FC = () => {
                             : ''
                         }}
                         transition={{ duration: 0.8 }}
-                        className={`${index === 0 ? 'border-l-2 border-purple-500' : ''}`}
+                        className={`${index === 0 ? 'border-l-2 border-cyan-500' : ''}`}
                       >
                         <TableCell className="font-medium">
                           {formatTimestamp(bet.timestamp)}
-                          {index === 0 && <span className="ml-2 text-xs text-purple-500">NEW</span>}
+                          {index === 0 && <span className="ml-2 text-xs text-cyan-400">NEW</span>}
                         </TableCell>
                         <TableCell>
                           {formatAddress(bet.address)}
                           {bet.address === publicKey && (
-                            <span className="ml-2 text-xs bg-purple-500 text-white px-1 py-0.5 rounded-sm">YOU</span>
+                            <span className="ml-2 text-xs bg-cyan-500 text-black px-1 py-0.5 rounded-sm">YOU</span>
                           )}
                         </TableCell>
                         <TableCell>{bet.amount} {bet.tokenSymbol || token.symbol}</TableCell>
@@ -386,41 +386,41 @@ const DiceGamePage: React.FC = () => {
         {/* Leaderboard Section */}
         <motion.div className="mt-12" variants={itemVariants}>
           <motion.h2 
-            className="text-3xl font-bold text-center mb-8 bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent"
+            className="text-3xl font-bold text-center mb-8 bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent"
             animate={{ opacity: [0.7, 1, 0.7] }}
             transition={{ duration: 3, repeat: Infinity }}
           >
             <Trophy className="inline-block mr-2 mb-1" /> Leaderboard
           </motion.h2>
           
-          <Card className="overflow-hidden bg-gray-800/50 border-purple-500/30">
+          <Card className="overflow-hidden bg-zinc-900/80 border-zinc-800">
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-900/50">
-                    <TableHead className="w-[60px] text-purple-500">Rank</TableHead>
-                    <TableHead className="text-purple-500">Player</TableHead>
-                    <TableHead className="text-purple-500">Profit</TableHead>
-                    <TableHead className="text-purple-500">Win Rate</TableHead>
-                    <TableHead className="text-purple-500 text-right">Total Bets</TableHead>
+                  <TableRow className="bg-zinc-950/50">
+                    <TableHead className="w-[60px] text-cyan-400">Rank</TableHead>
+                    <TableHead className="text-cyan-400">Player</TableHead>
+                    <TableHead className="text-cyan-400">Profit</TableHead>
+                    <TableHead className="text-cyan-400">Win Rate</TableHead>
+                    <TableHead className="text-cyan-400 text-right">Total Bets</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {isLoadingLeaderboard ? (
                     [...Array(5)].map((_, i) => (
                       <TableRow key={`loading-${i}`}>
-                        <TableCell><div className="h-4 w-8 bg-gray-700/30 rounded animate-pulse"></div></TableCell>
-                        <TableCell><div className="h-4 w-24 bg-gray-700/30 rounded animate-pulse"></div></TableCell>
-                        <TableCell><div className="h-4 w-16 bg-gray-700/30 rounded animate-pulse"></div></TableCell>
-                        <TableCell><div className="h-4 w-12 bg-gray-700/30 rounded animate-pulse"></div></TableCell>
-                        <TableCell className="text-right"><div className="h-4 w-10 ml-auto bg-gray-700/30 rounded animate-pulse"></div></TableCell>
+                        <TableCell><div className="h-4 w-8 bg-zinc-800/50 rounded animate-pulse"></div></TableCell>
+                        <TableCell><div className="h-4 w-24 bg-zinc-800/50 rounded animate-pulse"></div></TableCell>
+                        <TableCell><div className="h-4 w-16 bg-zinc-800/50 rounded animate-pulse"></div></TableCell>
+                        <TableCell><div className="h-4 w-12 bg-zinc-800/50 rounded animate-pulse"></div></TableCell>
+                        <TableCell className="text-right"><div className="h-4 w-10 ml-auto bg-zinc-800/50 rounded animate-pulse"></div></TableCell>
                       </TableRow>
                     ))
                   ) : leaderboard.length > 0 ? (
                     leaderboard.map((entry, index) => (
                       <TableRow 
                         key={index} 
-                        className={`${index < 3 ? 'bg-purple-500/5' : ''} ${entry.address === publicKey ? 'bg-purple-500/10' : ''}`}
+                        className={`${index < 3 ? 'bg-cyan-500/5' : ''} ${entry.address === publicKey ? 'bg-cyan-500/10' : ''}`}
                       >
                         <TableCell className="font-medium">
                           {index === 0 && <Medal className="inline text-yellow-500" size={20} />}
@@ -431,18 +431,18 @@ const DiceGamePage: React.FC = () => {
                         <TableCell>
                           {formatAddress(entry.address)}
                           {entry.address === publicKey && (
-                            <span className="ml-2 text-xs bg-purple-500 text-white px-1 py-0.5 rounded-sm">YOU</span>
+                            <span className="ml-2 text-xs bg-cyan-500 text-black px-1 py-0.5 rounded-sm">YOU</span>
                           )}
                         </TableCell>
                         <TableCell>
-                          <span className={`${parseFloat(entry.profit) > 0 ? 'text-green-500' : parseFloat(entry.profit) < 0 ? 'text-red-500' : 'text-gray-400'} font-semibold`}>
+                          <span className={`${parseFloat(entry.profit) > 0 ? 'text-emerald-500' : parseFloat(entry.profit) < 0 ? 'text-red-500' : 'text-gray-400'} font-semibold`}>
                             {parseFloat(entry.profit) > 0 ? '+' : ''}{parseFloat(entry.profit).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <div className="bg-gray-700 h-2 w-20 rounded-full overflow-hidden">
-                              <div className="h-full bg-gradient-to-r from-purple-500 to-pink-500" style={{ width: `${parseFloat(entry.winRate.replace('%', ''))}%` }}></div>
+                            <div className="bg-zinc-800 h-2 w-20 rounded-full overflow-hidden">
+                              <div className="h-full bg-gradient-to-r from-cyan-500 to-teal-500" style={{ width: `${parseFloat(entry.winRate.replace('%', ''))}%` }}></div>
                             </div>
                             <span>{entry.winRate}</span>
                           </div>
@@ -466,14 +466,14 @@ const DiceGamePage: React.FC = () => {
         {/* Provably Fair Explanation */}
         <motion.div className="mt-20" variants={itemVariants}>
           <motion.h2 
-            className="text-3xl font-bold text-center mb-8 bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent"
+            className="text-3xl font-bold text-center mb-8 bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent"
             animate={{ opacity: [0.7, 1, 0.7] }}
             transition={{ duration: 3, repeat: Infinity }}
           >
             <Shield className="inline-block mr-2 mb-1" /> Provably Fair System
           </motion.h2>
           
-          <Card className="overflow-hidden bg-gray-800/50 border-purple-500/30">
+          <Card className="overflow-hidden bg-zinc-900/80 border-zinc-800">
             <CardHeader>
               <CardTitle className="text-xl text-white">How Our Provably Fair System Works</CardTitle>
               <CardDescription className="text-gray-400">
@@ -482,24 +482,24 @@ const DiceGamePage: React.FC = () => {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <motion.div className="p-4 border border-gray-700 rounded-lg" whileHover={{ scale: 1.02 }}>
-                  <h3 className="text-lg font-semibold text-purple-500 mb-2 flex items-center">
+                <motion.div className="p-4 border border-zinc-800 rounded-lg" whileHover={{ scale: 1.02 }}>
+                  <h3 className="text-lg font-semibold text-cyan-400 mb-2 flex items-center">
                     <Info className="mr-2 h-5 w-5" /> Client Seed
                   </h3>
                   <p className="text-sm text-gray-400">
                     You provide a random seed value or generate one automatically. You can change this seed at any time.
                   </p>
                 </motion.div>
-                <motion.div className="p-4 border border-gray-700 rounded-lg" whileHover={{ scale: 1.02 }}>
-                  <h3 className="text-lg font-semibold text-purple-500 mb-2 flex items-center">
+                <motion.div className="p-4 border border-zinc-800 rounded-lg" whileHover={{ scale: 1.02 }}>
+                  <h3 className="text-lg font-semibold text-cyan-400 mb-2 flex items-center">
                     <Info className="mr-2 h-5 w-5" /> Server Seed
                   </h3>
                   <p className="text-sm text-gray-400">
                     The server generates a random seed. Only the hash of this seed is shared before the bet to prevent manipulation.
                   </p>
                 </motion.div>
-                <motion.div className="p-4 border border-gray-700 rounded-lg" whileHover={{ scale: 1.02 }}>
-                  <h3 className="text-lg font-semibold text-purple-500 mb-2 flex items-center">
+                <motion.div className="p-4 border border-zinc-800 rounded-lg" whileHover={{ scale: 1.02 }}>
+                  <h3 className="text-lg font-semibold text-cyan-400 mb-2 flex items-center">
                     <Info className="mr-2 h-5 w-5" /> Result Generation
                   </h3>
                   <p className="text-sm text-gray-400">
@@ -508,7 +508,7 @@ const DiceGamePage: React.FC = () => {
                 </motion.div>
               </div>
               
-              <Separator className="bg-gray-700" />
+              <Separator className="bg-zinc-800" />
               
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-white">Verification Process</h3>
@@ -518,8 +518,8 @@ const DiceGamePage: React.FC = () => {
                   <li>You can use the verification tool to confirm that the roll result was generated correctly.</li>
                 </ol>
                 
-                <div className="mt-6 bg-gray-900/50 p-4 rounded-lg">
-                  <h4 className="flex items-center text-purple-500 mb-2">
+                <div className="mt-6 bg-zinc-950/50 p-4 rounded-lg border border-zinc-800">
+                  <h4 className="flex items-center text-cyan-400 mb-2">
                     <Check className="mr-2 h-4 w-4" /> Why This Matters
                   </h4>
                   <p className="text-sm text-gray-400">

@@ -421,9 +421,9 @@ const DiceGame: React.FC = () => {
 
   if (!isConnected) {
     return (
-      <Card className="w-full max-w-3xl mx-auto bg-gray-800/50 border-purple-500/30">
+      <Card className="w-full max-w-3xl mx-auto bg-zinc-900/80 border-zinc-800">
         <CardContent className="flex flex-col items-center justify-center py-20">
-          <Wallet className="h-12 w-12 text-purple-500 mb-4" />
+          <Wallet className="h-12 w-12 text-cyan-400 mb-4" />
           <p className="text-lg text-gray-400">Please connect your wallet to play</p>
         </CardContent>
       </Card>
@@ -432,9 +432,9 @@ const DiceGame: React.FC = () => {
 
   if (isLoadingConfig) {
     return (
-      <Card className="w-full max-w-3xl mx-auto bg-gray-800/50 border-purple-500/30">
+      <Card className="w-full max-w-3xl mx-auto bg-zinc-900/80 border-zinc-800">
         <CardContent className="flex flex-col items-center justify-center py-20">
-          <Loader className="h-10 w-10 animate-spin text-purple-500 mb-4" />
+          <Loader className="h-10 w-10 animate-spin text-cyan-400 mb-4" />
           <p className="text-gray-400">Loading game...</p>
         </CardContent>
       </Card>
@@ -443,7 +443,7 @@ const DiceGame: React.FC = () => {
 
   if (gameConfig && !gameConfig.enabled) {
     return (
-      <Card className="w-full max-w-3xl mx-auto bg-gray-800/50 border-purple-500/30">
+      <Card className="w-full max-w-3xl mx-auto bg-zinc-900/80 border-zinc-800">
         <CardContent className="flex flex-col items-center justify-center py-20">
           <p className="text-xl text-red-500 mb-2">Game Disabled</p>
           <p className="text-gray-400 text-center">
@@ -457,11 +457,11 @@ const DiceGame: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Balance Card */}
-      <Card className="w-full max-w-3xl mx-auto bg-gray-800/50 border-purple-500/30">
+      <Card className="w-full max-w-3xl mx-auto bg-zinc-900/80 border-zinc-800">
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center justify-between text-lg">
             <span className="flex items-center gap-2">
-              <Wallet className="h-5 w-5 text-purple-500" />
+              <Wallet className="h-5 w-5 text-cyan-400" />
               Game Balance
             </span>
             <Button variant="ghost" size="sm" onClick={refreshBalance} disabled={isLoadingBalance}>
@@ -490,12 +490,12 @@ const DiceGame: React.FC = () => {
                   placeholder="Amount"
                   value={depositAmount}
                   onChange={(e) => setDepositAmount(e.target.value)}
-                  className="bg-gray-900/50 border-gray-700"
+                  className="bg-zinc-950/50 border-zinc-800"
                 />
                 <Button 
                   onClick={handleVerifyDeposit} 
                   disabled={isDepositing || !depositAmount}
-                  className="bg-green-600 hover:bg-green-700"
+                  className="bg-emerald-600 hover:bg-emerald-700"
                 >
                   {isDepositing ? <Loader className="h-4 w-4 animate-spin" /> : <ArrowDown className="h-4 w-4" />}
                 </Button>
@@ -516,12 +516,12 @@ const DiceGame: React.FC = () => {
                   placeholder="Amount"
                   value={withdrawAmount}
                   onChange={(e) => setWithdrawAmount(e.target.value)}
-                  className="bg-gray-900/50 border-gray-700"
+                  className="bg-zinc-950/50 border-zinc-800"
                 />
                 <Button 
                   onClick={handleWithdraw} 
                   disabled={isWithdrawing || !withdrawAmount || parseFloat(withdrawAmount) > balance}
-                  className="bg-red-600 hover:bg-red-700"
+                  className="bg-rose-600 hover:bg-rose-700"
                 >
                   {isWithdrawing ? <Loader className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
                 </Button>
@@ -532,9 +532,9 @@ const DiceGame: React.FC = () => {
       </Card>
 
       {/* Game Card */}
-      <Card className="w-full max-w-3xl mx-auto bg-gray-800/50 border-purple-500/30">
+      <Card className="w-full max-w-3xl mx-auto bg-zinc-900/80 border-zinc-800">
         <CardHeader>
-          <CardTitle className="text-center text-2xl bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent">
+          <CardTitle className="text-center text-2xl bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent">
             {token.symbol} Dice Game
           </CardTitle>
         </CardHeader>
@@ -553,7 +553,7 @@ const DiceGame: React.FC = () => {
                     gameConfig ? parseFloat(gameConfig.maxBetAmount) : 10000,
                     balance
                   )}
-                  className="w-full bg-gray-900/50 border-gray-700"
+                  className="w-full bg-zinc-950/50 border-zinc-800"
                 />
                 <div className="flex justify-between text-xs text-gray-500">
                   <span>Min: {gameConfig?.minBetAmount}</span>
@@ -581,14 +581,14 @@ const DiceGame: React.FC = () => {
                   <Button
                     variant={rollType === 'under' ? 'default' : 'outline'}
                     onClick={() => setRollType('under')}
-                    className={rollType === 'under' ? 'bg-purple-600 hover:bg-purple-700' : ''}
+                    className={rollType === 'under' ? 'bg-cyan-600 hover:bg-cyan-700' : ''}
                   >
                     Roll Under
                   </Button>
                   <Button
                     variant={rollType === 'over' ? 'default' : 'outline'}
                     onClick={() => setRollType('over')}
-                    className={rollType === 'over' ? 'bg-pink-600 hover:bg-pink-700' : ''}
+                    className={rollType === 'over' ? 'bg-teal-600 hover:bg-teal-700' : ''}
                   >
                     Roll Over
                   </Button>
@@ -596,25 +596,25 @@ const DiceGame: React.FC = () => {
               </div>
               
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gray-900/50 rounded-lg p-3">
+                <div className="bg-zinc-950/50 rounded-lg p-3 border border-zinc-800">
                   <p className="text-xs text-gray-400">Win Chance</p>
                   <p className="text-lg font-bold text-white">{calculateWinChance()}%</p>
                 </div>
-                <div className="bg-gray-900/50 rounded-lg p-3">
+                <div className="bg-zinc-950/50 rounded-lg p-3 border border-zinc-800">
                   <p className="text-xs text-gray-400">Multiplier</p>
                   <p className="text-lg font-bold text-white">{calculateMultiplier()}x</p>
                 </div>
               </div>
               
-              <div className="bg-gray-900/50 rounded-lg p-3">
+              <div className="bg-zinc-950/50 rounded-lg p-3 border border-zinc-800">
                 <p className="text-xs text-gray-400">Potential Profit</p>
-                <p className="text-lg font-bold text-green-500">+{calculateProfit()} {token.symbol}</p>
+                <p className="text-lg font-bold text-emerald-400">+{calculateProfit()} {token.symbol}</p>
               </div>
               
               <div className="space-y-2">
                 <label className="block text-xs text-gray-400">Client Seed</label>
                 <div className="flex gap-2">
-                  <code className="flex-1 text-xs bg-gray-900/50 p-2 rounded overflow-hidden text-ellipsis text-gray-400">
+                  <code className="flex-1 text-xs bg-zinc-950/50 p-2 rounded overflow-hidden text-ellipsis text-gray-400 border border-zinc-800">
                     {clientSeed}
                   </code>
                   <Button variant="ghost" size="sm" onClick={generateClientSeed}>
@@ -629,7 +629,7 @@ const DiceGame: React.FC = () => {
               <Button
                 onClick={handleRoll}
                 disabled={isRolling || !gameConfig?.enabled || balance < betAmount}
-                className="w-full h-16 text-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                className="w-full h-16 text-lg bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700"
               >
                 {isRolling ? 'Rolling...' : 'Roll Dice'}
               </Button>
@@ -644,7 +644,7 @@ const DiceGame: React.FC = () => {
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="p-4 rounded-lg border border-gray-700 bg-gray-900/50 space-y-4"
+                  className="p-4 rounded-lg border border-zinc-800 bg-zinc-950/50 space-y-4"
                 >
                   <div className="text-center">
                     <div className="text-sm text-gray-400">Roll Result</div>

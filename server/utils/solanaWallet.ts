@@ -49,25 +49,40 @@ export const initializeHouseWallet = (): Keypair => {
   }
 
   const secretKey = process.env.HOUSE_WALLET_SECRET;
+  
+  // DEBUG: Log what we're reading
+  console.log('[WALLET] HOUSE_WALLET_SECRET from env:', secretKey ? `${secretKey.substring(0, 10)}... (length: ${secretKey.length})` : 'NOT SET');
+  console.log('[WALLET] First char code:', secretKey ? secretKey.charCodeAt(0) : 'N/A');
+  
   if (!secretKey) {
     throw new Error('HOUSE_WALLET_SECRET not configured in environment');
   }
 
-  try {
-    // Try to decode as base58
-    const decoded = bs58.decode(secretKey);
-    houseWallet = Keypair.fromSecretKey(decoded);
-    console.log('[WALLET] House wallet initialized:', houseWallet.publicKey.toBase58());
-    return houseWallet;
-  } catch (error) {
-    // Try as JSON array
+  // Check if it starts with '[' (JSON array)
+  const isJsonArray = secretKey.trim().startsWith('[');
+  console.log('[WALLET] Detected format:', isJsonArray ? 'JSON Array' : 'Base58');
+
+  if (isJsonArray) {
+    // Parse as JSON array
     try {
       const parsed = JSON.parse(secretKey);
       houseWallet = Keypair.fromSecretKey(Uint8Array.from(parsed));
       console.log('[WALLET] House wallet initialized:', houseWallet.publicKey.toBase58());
       return houseWallet;
-    } catch {
-      throw new Error('Invalid HOUSE_WALLET_SECRET format. Must be base58 or JSON array.');
+    } catch (e) {
+      console.error('[WALLET] Failed to parse JSON array:', e);
+      throw new Error('Invalid HOUSE_WALLET_SECRET JSON array format.');
+    }
+  } else {
+    // Parse as base58
+    try {
+      const decoded = bs58.decode(secretKey.trim());
+      houseWallet = Keypair.fromSecretKey(decoded);
+      console.log('[WALLET] House wallet initialized:', houseWallet.publicKey.toBase58());
+      return houseWallet;
+    } catch (e) {
+      console.error('[WALLET] Failed to decode base58:', e);
+      throw new Error('Invalid HOUSE_WALLET_SECRET base58 format.');
     }
   }
 };

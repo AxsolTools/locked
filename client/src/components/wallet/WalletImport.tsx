@@ -49,14 +49,14 @@ export function WalletImport({ onComplete }: WalletImportProps) {
         toast({
           title: "Wallet Imported",
           description: "Your wallet has been successfully imported",
-        });
-        
+      });
+      
         // Call completion callback or redirect
-        if (onComplete) {
-          onComplete();
-        } else {
-          window.location.href = '/dashboard';
-        }
+      if (onComplete) {
+        onComplete();
+      } else {
+        window.location.href = '/dashboard';
+      }
       } else {
         setError("Invalid private key format. Please check and try again.");
       }
@@ -73,23 +73,23 @@ export function WalletImport({ onComplete }: WalletImportProps) {
       <h2 className="text-2xl font-bold text-center mb-6 text-white">Import Solana Wallet</h2>
       
       <div className="space-y-4">
-        <div className="space-y-2">
+          <div className="space-y-2">
           <label htmlFor="privateKey" className="block text-sm font-medium text-gray-300">
             Enter your private key (Base58 format)
-          </label>
-          <Input
+            </label>
+            <Input
             id="privateKey"
-            type="password"
+              type="password"
             placeholder="Your Base58 encoded private key..."
             value={privateKey}
             onChange={handlePrivateKeyChange}
-            disabled={isLoading}
+              disabled={isLoading}
             className="w-full bg-gray-900/50 border-gray-700 text-white"
-          />
+            />
           <p className="text-xs text-gray-400">
             Your private key is stored locally in your browser and never sent to any server.
-          </p>
-        </div>
+            </p>
+          </div>
         
         {error && (
           <Alert variant="destructive" className="bg-red-900/30 border-red-500/50">
@@ -97,21 +97,21 @@ export function WalletImport({ onComplete }: WalletImportProps) {
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
-        
-        <Button 
+          
+          <Button 
           onClick={handleImport} 
           disabled={isLoading || !privateKey.trim()} 
           className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-        >
-          {isLoading ? (
-            <>
+          >
+            {isLoading ? (
+              <>
               <Loader className="h-4 w-4 mr-2 animate-spin" />
               Importing...
-            </>
-          ) : (
+              </>
+            ) : (
             "Import Wallet"
-          )}
-        </Button>
+            )}
+          </Button>
         
         <div className="mt-4 p-3 bg-amber-900/30 rounded-lg border border-amber-500/30">
           <p className="text-xs text-amber-400 flex items-start gap-2">
@@ -120,8 +120,8 @@ export function WalletImport({ onComplete }: WalletImportProps) {
               Never share your private key with anyone. LOCKED will never ask for your private key 
               outside of this import process.
             </span>
-          </p>
-        </div>
+            </p>
+          </div>
       </div>
     </div>
   );

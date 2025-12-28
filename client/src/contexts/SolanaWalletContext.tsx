@@ -351,12 +351,21 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
   // Sign a message
   const signMessage = useCallback((message: Uint8Array): Uint8Array | null => {
     const keypair = getStoredKeypair();
-    if (!keypair) return null;
+    if (!keypair) {
+      console.error('[WALLET] Cannot sign message: No keypair available');
+      return null;
+    }
 
-    // Use tweetnacl or similar for signing
-    // For now, we return null as signing is handled by the keypair directly
-    // In a real implementation, you'd use nacl.sign.detached(message, keypair.secretKey)
-    return null;
+    try {
+      // Use @solana/web3.js Keypair's built-in sign method
+      // This signs the message with ed25519
+      const signature = keypair.sign(message);
+      console.log('[WALLET] Message signed successfully');
+      return signature;
+    } catch (error) {
+      console.error('[WALLET] Error signing message:', error);
+      return null;
+    }
   }, [getStoredKeypair]);
 
   // Get the full keypair (for signing transactions)

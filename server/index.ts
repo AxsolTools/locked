@@ -10,12 +10,17 @@ import { initializeSolanaClient } from './utils/solanaClient';
 import { initializeHouseWallet, isWalletServiceReady } from './utils/solanaWallet';
 import dotenv from 'dotenv';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { log } from './vite';
 import http from 'http';
 import { storage } from './storage';
 // @ts-ignore
 import rateLimit from 'express-rate-limit';
 import { initializeDiceGameConfig, repairDiceGameConfig } from './initDiceGame';
+
+// ES Module compatibility - get __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Load environment variables
 dotenv.config();

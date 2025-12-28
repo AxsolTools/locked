@@ -23,6 +23,8 @@ import nacl from 'tweetnacl';
 import { storage } from '../storage';
 import { getConnection, executeWithFailover } from '../utils/solanaClient';
 import { getHouseWallet, isWalletServiceReady } from '../utils/solanaWallet';
+import { getTokenBalance, invalidateCache } from '../utils/balanceService';
+import { transferFromUser } from '../utils/transactionService';
 
 const router = Router();
 
@@ -173,19 +175,38 @@ router.post('/create', async (req: Request, res: Response) => {
       });
     }
 
-    // Check user's game balance
-    const userBalance = await storage.getBalance(walletAddress);
-    if (userBalance < lockAmount) {
+    // Get the token mint from environment
+    const tokenMint = process.env.LOCKED_TOKEN_MINT;
+    if (!tokenMint) {
+      return res.status(500).json({ error: 'Token mint not configured' });
+    }
+
+    // Check user's ON-CHAIN token balance (not internal game balance)
+    invalidateCache(walletAddress); // Ensure fresh balance
+    const tokenBalance = await getTokenBalance(walletAddress, tokenMint);
+    
+    console.log('[VESTING] User balance check:', walletAddress, 'has', tokenBalance.balance, 'needs', lockAmount);
+    
+    if (tokenBalance.balance < lockAmount) {
       return res.status(400).json({ 
         error: 'Insufficient balance',
         required: lockAmount,
-        available: userBalance
+        available: tokenBalance.balance
       });
     }
 
-    // Deduct from user's balance
-    const newBalance = userBalance - lockAmount;
-    await storage.setBalance(walletAddress, newBalance);
+    // Transfer tokens from user to house wallet (lock them)
+    const transferResult = await transferFromUser(walletAddress, lockAmount, tokenMint);
+    
+    if (!transferResult.success) {
+      console.error('[VESTING] Token transfer failed:', transferResult.error);
+      return res.status(500).json({ 
+        error: 'Failed to lock tokens: ' + (transferResult.error || 'Transfer failed'),
+        details: transferResult.error
+      });
+    }
+    
+    console.log('[VESTING] Tokens transferred to house wallet, tx:', transferResult.signature);
 
     // Create vesting schedule
     const now = Date.now();
@@ -208,6 +229,8 @@ router.post('/create', async (req: Request, res: Response) => {
     res.json({
       success: true,
       vestingId: vestingSchedule.id,
+      signature: transferResult.signature,
+      txSignature: transferResult.signature,
       message: 'Vesting schedule created successfully',
       schedule: {
         id: vestingSchedule.id,

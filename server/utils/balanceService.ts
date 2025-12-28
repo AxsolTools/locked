@@ -9,7 +9,6 @@
  */
 
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { getAccount, getAssociatedTokenAddress, TokenAccountNotFoundError } from '@solana/spl-token';
 
 // Cache configuration
 const CACHE_TTL_MS = 5000; // 5 seconds
@@ -127,17 +126,14 @@ export async function getTokenBalance(
 ): Promise<TokenBalanceInfo> {
   const cacheKey = getCacheKey(walletAddress, tokenMint);
   const cached = balanceCache.get(cacheKey);
-  const tokenDecimals = decimals ?? getConfiguredTokenDecimals();
-  
-  console.log(`[BALANCE] Fetching balance for wallet ${walletAddress}, mint ${tokenMint}, decimals ${tokenDecimals}`);
+  const fallbackDecimals = decimals ?? getConfiguredTokenDecimals();
   
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-    console.log(`[BALANCE] Cache hit: ${cached.balance}`);
     return {
       mint: tokenMint,
       balance: cached.balance,
       rawBalance: cached.rawBalance,
-      decimals: tokenDecimals
+      decimals: fallbackDecimals
     };
   }
   
@@ -145,53 +141,60 @@ export async function getTokenBalance(
     const connection = getConnection();
     const walletPubkey = new PublicKey(walletAddress);
     const mintPubkey = new PublicKey(tokenMint);
-    
-    // Get associated token account
-    const tokenAccount = await getAssociatedTokenAddress(mintPubkey, walletPubkey);
-    console.log(`[BALANCE] Token account address: ${tokenAccount.toBase58()}`);
-    
-    try {
-      const accountInfo = await getAccount(connection, tokenAccount);
-      const rawBalance = accountInfo.amount.toString();
-      const balance = Number(rawBalance) / Math.pow(10, tokenDecimals);
-      
-      console.log(`[BALANCE] Raw balance: ${rawBalance}, Calculated: ${balance}`);
-      
-      balanceCache.set(cacheKey, {
-        balance,
-        rawBalance,
-        timestamp: Date.now()
-      });
-      
-      cleanupCache();
-      
-      return {
-        mint: tokenMint,
-        balance,
-        rawBalance,
-        decimals: tokenDecimals
-      };
-    } catch (error: any) {
-      if (error instanceof TokenAccountNotFoundError) {
-        console.log(`[BALANCE] Token account not found for ${walletAddress} - balance is 0`);
-        // Token account doesn't exist - balance is 0
-        return {
-          mint: tokenMint,
-          balance: 0,
-          rawBalance: '0',
-          decimals: tokenDecimals
-        };
+
+    // IMPORTANT:
+    // Do NOT assume tokens are stored in the wallet's ATA.
+    // Wallets (including Phantom) can hold balances in non-ATA token accounts.
+    // So we sum all token accounts owned by the wallet for the given mint.
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(walletPubkey, {
+      mint: mintPubkey
+    });
+
+    let rawSum = 0n;
+    let decimalsOnChain: number | null = null;
+
+    for (const acc of tokenAccounts.value) {
+      const parsed = (acc.account.data as any)?.parsed;
+      const tokenAmount = parsed?.info?.tokenAmount;
+      if (!tokenAmount?.amount) continue;
+      rawSum += BigInt(tokenAmount.amount);
+      if (typeof tokenAmount.decimals === 'number') {
+        decimalsOnChain = tokenAmount.decimals;
       }
-      console.error(`[BALANCE] Error getting account:`, error.message);
-      throw error;
     }
+
+    const finalDecimals = decimalsOnChain ?? fallbackDecimals;
+    // Safe for typical SPL balances (including 494k * 1e6); if you expect extremely large values,
+    // switch to a decimal library.
+    const rawBalanceStr = rawSum.toString();
+    const balance = Number(rawBalanceStr) / Math.pow(10, finalDecimals);
+
+    balanceCache.set(cacheKey, {
+      balance,
+      rawBalance: rawBalanceStr,
+      timestamp: Date.now()
+    });
+
+    cleanupCache();
+
+    // High-signal debug line (helps confirm mint + decimals + sum across accounts)
+    console.log(
+      `[BALANCE] mint=${tokenMint} owner=${walletAddress} accounts=${tokenAccounts.value.length} raw=${rawBalanceStr} decimals=${finalDecimals} ui=${balance}`
+    );
+
+    return {
+      mint: tokenMint,
+      balance,
+      rawBalance: rawBalanceStr,
+      decimals: finalDecimals
+    };
   } catch (error: any) {
-    console.error(`[BALANCE] Error fetching token balance for ${walletAddress}:`, error.message);
+    console.error(`[BALANCE] Error fetching token balance mint=${tokenMint} owner=${walletAddress}:`, error.message);
     return {
       mint: tokenMint,
       balance: 0,
       rawBalance: '0',
-      decimals: tokenDecimals
+      decimals: fallbackDecimals
     };
   }
 }

@@ -29,6 +29,11 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// DigitalOcean / proxy compatibility:
+// Ensure Express trusts the upstream proxy so rate limiting and IP detection work correctly.
+// This prevents ERR_ERL_UNEXPECTED_X_FORWARDED_FOR from express-rate-limit.
+app.set('trust proxy', 1);
+
 // Create rate limiter for dice game
 const diceGameLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute

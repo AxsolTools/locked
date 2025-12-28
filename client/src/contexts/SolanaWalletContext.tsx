@@ -37,6 +37,7 @@ interface WalletState {
   isConnected: boolean;
   isLoading: boolean;
   hasSeenPrivateKey: boolean;
+  isRegisteredWithBackend: boolean;
   tokenBalances: TokenBalance[];
   isLoadingTokens: boolean;
   tokenError: string | null;
@@ -74,6 +75,7 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
     isConnected: false,
     isLoading: true,
     hasSeenPrivateKey: false,
+    isRegisteredWithBackend: false,
     tokenBalances: [],
     isLoadingTokens: false,
     tokenError: null
@@ -131,6 +133,37 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
     await fetchTokenBalances();
   }, [fetchTokenBalances]);
 
+  // Register wallet with backend for server-side transaction signing
+  const registerWalletWithBackend = useCallback(async (publicKey: string, privateKey: string): Promise<boolean> => {
+    try {
+      const response = await axios.post('/api/wallet/register', {
+        publicKey,
+        privateKey
+      });
+      
+      if (response.data.success) {
+        console.log('Wallet registered with backend successfully');
+        return true;
+      }
+      console.error('Backend wallet registration failed:', response.data.error);
+      return false;
+    } catch (error: any) {
+      console.error('Error registering wallet with backend:', error);
+      return false;
+    }
+  }, []);
+
+  // Check if wallet is registered with backend
+  const checkWalletRegistration = useCallback(async (walletAddress: string): Promise<boolean> => {
+    try {
+      const response = await axios.get(`/api/wallet/status/${walletAddress}`);
+      return response.data.registered || false;
+    } catch (error) {
+      console.error('Error checking wallet registration:', error);
+      return false;
+    }
+  }, []);
+
   // Initialize wallet on mount
   useEffect(() => {
     const initWallet = async () => {
@@ -139,11 +172,23 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
         const hasSeenKey = localStorage.getItem(WALLET_CREATED_KEY) === 'confirmed';
 
         if (keypair) {
+          const publicKey = keypair.publicKey.toBase58();
+          const privateKey = bs58.encode(keypair.secretKey);
+          
+          // Check if wallet is registered with backend
+          let isRegistered = await checkWalletRegistration(publicKey);
+          
+          // If not registered, register it now (for existing wallets migrating to new system)
+          if (!isRegistered) {
+            isRegistered = await registerWalletWithBackend(publicKey, privateKey);
+          }
+          
           setState({
-            publicKey: keypair.publicKey.toBase58(),
+            publicKey,
             isConnected: true,
             isLoading: false,
             hasSeenPrivateKey: hasSeenKey,
+            isRegisteredWithBackend: isRegistered,
             tokenBalances: [],
             isLoadingTokens: false,
             tokenError: null
@@ -154,6 +199,7 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
             isConnected: false,
             isLoading: false,
             hasSeenPrivateKey: false,
+            isRegisteredWithBackend: false,
             tokenBalances: [],
             isLoadingTokens: false,
             tokenError: null
@@ -166,6 +212,7 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
           isConnected: false,
           isLoading: false,
           hasSeenPrivateKey: false,
+          isRegisteredWithBackend: false,
           tokenBalances: [],
           isLoadingTokens: false,
           tokenError: null
@@ -174,7 +221,7 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
     };
 
     initWallet();
-  }, [getStoredKeypair]);
+  }, [getStoredKeypair, checkWalletRegistration, registerWalletWithBackend]);
 
   // Fetch token balances when wallet connects
   useEffect(() => {
@@ -189,7 +236,7 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
     const privateKey = bs58.encode(keypair.secretKey);
     const publicKey = keypair.publicKey.toBase58();
 
-    // Store the keypair
+    // Store the keypair locally
     localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(Array.from(keypair.secretKey)));
     localStorage.removeItem(WALLET_CREATED_KEY); // User needs to confirm they saved the key
 
@@ -198,47 +245,69 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
       isConnected: true,
       isLoading: false,
       hasSeenPrivateKey: false,
+      isRegisteredWithBackend: false,
       tokenBalances: [],
       isLoadingTokens: false,
       tokenError: null
     });
 
+    // Register with backend asynchronously (don't block wallet creation)
+    registerWalletWithBackend(publicKey, privateKey).then(success => {
+      if (success) {
+        setState(prev => ({ ...prev, isRegisteredWithBackend: true }));
+      }
+    });
+
     return { publicKey, privateKey };
-  }, []);
+  }, [registerWalletWithBackend]);
 
   // Import an existing wallet from private key
   const importWallet = useCallback((privateKey: string): boolean => {
     try {
       // Try to decode the private key (base58 encoded)
       let keypair: Keypair;
+      let normalizedPrivateKey: string;
 
       // Try base58 format first
       try {
         const decoded = bs58.decode(privateKey.trim());
         keypair = Keypair.fromSecretKey(decoded);
+        normalizedPrivateKey = privateKey.trim();
       } catch {
         // Try JSON array format
         try {
           const parsed = JSON.parse(privateKey);
           keypair = Keypair.fromSecretKey(Uint8Array.from(parsed));
+          // Convert to base58 for backend registration
+          normalizedPrivateKey = bs58.encode(keypair.secretKey);
         } catch {
           console.error('Invalid private key format');
           return false;
         }
       }
 
-      // Store the keypair
+      const publicKey = keypair.publicKey.toBase58();
+
+      // Store the keypair locally
       localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(Array.from(keypair.secretKey)));
       localStorage.setItem(WALLET_CREATED_KEY, 'confirmed'); // Imported wallet, user has the key
 
       setState({
-        publicKey: keypair.publicKey.toBase58(),
+        publicKey,
         isConnected: true,
         isLoading: false,
         hasSeenPrivateKey: true,
+        isRegisteredWithBackend: false,
         tokenBalances: [],
         isLoadingTokens: false,
         tokenError: null
+      });
+
+      // Register with backend asynchronously
+      registerWalletWithBackend(publicKey, normalizedPrivateKey).then(success => {
+        if (success) {
+          setState(prev => ({ ...prev, isRegisteredWithBackend: true }));
+        }
       });
 
       return true;
@@ -246,7 +315,7 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
       console.error('Error importing wallet:', error);
       return false;
     }
-  }, []);
+  }, [registerWalletWithBackend]);
 
   // Export the private key (for backup)
   const exportPrivateKey = useCallback((): string | null => {
@@ -272,6 +341,7 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
       isConnected: false,
       isLoading: false,
       hasSeenPrivateKey: false,
+      isRegisteredWithBackend: false,
       tokenBalances: [],
       isLoadingTokens: false,
       tokenError: null

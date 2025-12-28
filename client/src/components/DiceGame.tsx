@@ -8,7 +8,7 @@ import { useSolanaWallet } from '../contexts/SolanaWalletContext';
 import { useToast } from '../hooks/use-toast';
 import { useTokenConfig } from '../hooks/useTokenConfig';
 import axios from 'axios';
-import { Loader, Wallet, ArrowDown, ArrowUp, RefreshCw, ExternalLink } from 'lucide-react';
+import { Loader, Wallet, RefreshCw, ExternalLink, AlertTriangle, CheckCircle } from 'lucide-react';
 import { formatAddress, getExplorerUrl } from '../lib/solanaUtils';
 
 /**
@@ -21,6 +21,8 @@ interface GameConfig {
   decimalPlaces: number;
   payoutEnabled: boolean;
   houseEdge: number;
+  maxProfit: string;
+  directBetting: boolean;
 }
 
 /**
@@ -32,6 +34,7 @@ interface GameResult {
   profit: string;
   multiplier: string;
   betId?: string;
+  txSignature?: string;
   verification?: {
     clientSeed: string;
     serverSeed: string;
@@ -40,9 +43,10 @@ interface GameResult {
 }
 
 /**
- * DiceGame Component - Solana/LOCKED version
+ * DiceGame Component - Direct On-Chain Betting
  * 
- * Balance-based betting using deposited LOCKED tokens.
+ * No deposit system - bets directly from user's wallet.
+ * Tokens are transferred on-chain when bet completes.
  */
 const DiceGame: React.FC = () => {
   // Game state
@@ -55,23 +59,17 @@ const DiceGame: React.FC = () => {
   // Provable fairness state
   const [clientSeed, setClientSeed] = useState<string>('');
   
-  // Balance state
-  const [balance, setBalance] = useState<number>(0);
+  // Balance state (on-chain balance)
+  const [onChainBalance, setOnChainBalance] = useState<number>(0);
   const [isLoadingBalance, setIsLoadingBalance] = useState<boolean>(true);
-  
-  // Deposit/Withdraw state
-  const [depositAmount, setDepositAmount] = useState<string>('');
-  const [withdrawAmount, setWithdrawAmount] = useState<string>('');
-  const [isDepositing, setIsDepositing] = useState<boolean>(false);
-  const [isWithdrawing, setIsWithdrawing] = useState<boolean>(false);
-  const [houseWalletAddress, setHouseWalletAddress] = useState<string>('');
+  const [isWalletRegistered, setIsWalletRegistered] = useState<boolean>(false);
   
   // Configuration
   const [gameConfig, setGameConfig] = useState<GameConfig | null>(null);
   const [isLoadingConfig, setIsLoadingConfig] = useState<boolean>(true);
   
   // Wallet and token context
-  const { publicKey, isConnected } = useSolanaWallet();
+  const { publicKey, isConnected, isRegisteredWithBackend } = useSolanaWallet();
   const { toast } = useToast();
   const { token } = useTokenConfig();
 
@@ -95,7 +93,9 @@ const DiceGame: React.FC = () => {
           maxBetAmount: "10000",
           decimalPlaces: 2,
           payoutEnabled: true,
-          houseEdge: 1.5
+          houseEdge: 1.5,
+          maxProfit: "5000",
+          directBetting: true
         });
       } finally {
         setIsLoadingConfig(false);
@@ -106,30 +106,26 @@ const DiceGame: React.FC = () => {
   }, []);
 
   /**
-   * Fetch balance and house wallet address
+   * Fetch on-chain balance
    */
-  useEffect(() => {
-    const fetchBalanceAndHouseAddress = async () => {
-      if (!publicKey) return;
-      
-      setIsLoadingBalance(true);
-      try {
-        // Fetch balance
-        const balanceRes = await axios.get(`/api/balance/${publicKey}`);
-        setBalance(balanceRes.data.balance || 0);
-        
-        // Fetch house wallet address
-        const houseRes = await axios.get('/api/balance/house/address');
-        setHouseWalletAddress(houseRes.data.houseWalletAddress || '');
-      } catch (error) {
-        console.error('Error fetching balance:', error);
-      } finally {
-        setIsLoadingBalance(false);
-      }
-    };
-
-    fetchBalanceAndHouseAddress();
+  const fetchBalance = useCallback(async () => {
+    if (!publicKey) return;
+    
+    setIsLoadingBalance(true);
+    try {
+      const response = await axios.get(`/api/dice/balance/${publicKey}`);
+      setOnChainBalance(response.data.balance || 0);
+      setIsWalletRegistered(response.data.registered || false);
+    } catch (error) {
+      console.error('Error fetching balance:', error);
+    } finally {
+      setIsLoadingBalance(false);
+    }
   }, [publicKey]);
+
+  useEffect(() => {
+    fetchBalance();
+  }, [fetchBalance]);
 
   /**
    * Generate client seed on mount
@@ -167,11 +163,11 @@ const DiceGame: React.FC = () => {
   const calculateProfit = () => {
     if (!gameConfig) return "0.00";
     
-    const profit = (betAmount * parseFloat(calculateMultiplier()) - betAmount).toFixed(
-      gameConfig.decimalPlaces || 2
-    );
+    const rawProfit = betAmount * parseFloat(calculateMultiplier()) - betAmount;
+    const maxProfit = parseFloat(gameConfig.maxProfit || "5000");
+    const cappedProfit = Math.min(rawProfit, maxProfit);
     
-    return profit;
+    return cappedProfit.toFixed(gameConfig.decimalPlaces || 2);
   };
 
   /**
@@ -184,135 +180,20 @@ const DiceGame: React.FC = () => {
   };
 
   /**
-   * Refresh balance
-   */
-  const refreshBalance = async () => {
-    if (!publicKey) return;
-    
-    try {
-      const response = await axios.get(`/api/balance/${publicKey}`);
-      setBalance(response.data.balance || 0);
-    } catch (error) {
-      console.error('Error refreshing balance:', error);
-    }
-  };
-
-  /**
-   * Handle deposit verification
-   * User sends tokens to house wallet, then submits signature for verification
-   */
-  const handleVerifyDeposit = async () => {
-    if (!publicKey || !depositAmount) return;
-    
-    const amount = parseFloat(depositAmount);
-    if (isNaN(amount) || amount <= 0) {
-      toast({
-        title: "Invalid Amount",
-        description: "Please enter a valid deposit amount",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Prompt user for transaction signature
-    const signature = window.prompt(
-      `Enter the transaction signature after sending ${token.symbol} tokens to the house wallet:`
-    );
-
-    if (!signature) return;
-
-    setIsDepositing(true);
-    try {
-      const response = await axios.post('/api/balance/deposit', {
-        walletAddress: publicKey,
-        signature,
-        amount
-      });
-
-      if (response.data.success) {
-        setBalance(response.data.newBalance);
-        setDepositAmount('');
-        toast({
-          title: "Deposit Successful",
-          description: `Deposited ${response.data.amount} ${token.symbol} tokens`,
-        });
-      }
-    } catch (error: any) {
-      toast({
-        title: "Deposit Failed",
-        description: error.response?.data?.error || "Failed to verify deposit",
-        variant: "destructive",
-      });
-    } finally {
-      setIsDepositing(false);
-    }
-  };
-
-  /**
-   * Handle withdrawal
-   */
-  const handleWithdraw = async () => {
-    if (!publicKey || !withdrawAmount) return;
-    
-    const amount = parseFloat(withdrawAmount);
-    if (isNaN(amount) || amount <= 0) {
-      toast({
-        title: "Invalid Amount",
-        description: "Please enter a valid withdrawal amount",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (amount > balance) {
-      toast({
-        title: "Insufficient Balance",
-        description: "You don't have enough balance to withdraw",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsWithdrawing(true);
-    try {
-      const response = await axios.post('/api/balance/withdraw', {
-        walletAddress: publicKey,
-        amount
-      });
-
-      if (response.data.success) {
-        setBalance(response.data.newBalance);
-        setWithdrawAmount('');
-        toast({
-          title: "Withdrawal Successful",
-          description: `Withdrew ${amount} ${token.symbol} tokens`,
-          action: response.data.signature ? (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => window.open(getExplorerUrl(response.data.signature), '_blank')}
-            >
-              View TX
-            </Button>
-          ) : undefined,
-        });
-      }
-    } catch (error: any) {
-      toast({
-        title: "Withdrawal Failed",
-        description: error.response?.data?.error || "Failed to process withdrawal",
-        variant: "destructive",
-      });
-    } finally {
-      setIsWithdrawing(false);
-    }
-  };
-
-  /**
    * Handle roll
    */
   const handleRoll = async () => {
     if (isRolling || !publicKey) return;
+    
+    // Check wallet registration
+    if (!isWalletRegistered && !isRegisteredWithBackend) {
+      toast({
+        title: "Wallet Not Registered",
+        description: "Please reconnect your wallet to enable betting",
+        variant: "destructive",
+      });
+      return;
+    }
     
     // Validate bet amount
     if (!gameConfig) return;
@@ -329,10 +210,10 @@ const DiceGame: React.FC = () => {
       return;
     }
 
-    if (betAmount > balance) {
+    if (betAmount > onChainBalance) {
       toast({
         title: "Insufficient Balance",
-        description: `Deposit more ${token.symbol} tokens to place this bet`,
+        description: `You don't have enough ${token.symbol} tokens in your wallet`,
         variant: "destructive",
       });
       return;
@@ -356,9 +237,8 @@ const DiceGame: React.FC = () => {
       }
 
       const betId = betResponse.data.betId;
-      setBalance(betResponse.data.newBalance);
 
-      // Roll
+      // Roll and execute on-chain transaction
       const rollResponse = await axios.post('/api/dice/roll', {
         betId,
         walletAddress: publicKey,
@@ -375,6 +255,7 @@ const DiceGame: React.FC = () => {
         profit: rollResponse.data.profit,
         multiplier: calculateMultiplier(),
         betId: rollResponse.data.betId,
+        txSignature: rollResponse.data.txSignature,
         verification: {
           clientSeed: rollResponse.data.clientSeed,
           serverSeed: rollResponse.data.serverSeed,
@@ -383,7 +264,7 @@ const DiceGame: React.FC = () => {
       };
 
       setGameResult(result);
-      setBalance(rollResponse.data.newBalance);
+      setOnChainBalance(rollResponse.data.newBalance);
       
       // Generate new client seed
       generateClientSeed();
@@ -393,17 +274,57 @@ const DiceGame: React.FC = () => {
         toast({
           title: "🎉 You Won!",
           description: `+${result.profit} ${token.symbol}`,
+          action: result.txSignature ? (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => window.open(getExplorerUrl(result.txSignature!), '_blank')}
+            >
+              View TX
+            </Button>
+          ) : undefined,
+        });
+      } else {
+        toast({
+          title: "😔 You Lost",
+          description: `${result.profit} ${token.symbol}`,
+          action: result.txSignature ? (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => window.open(getExplorerUrl(result.txSignature!), '_blank')}
+            >
+              View TX
+            </Button>
+          ) : undefined,
         });
       }
     } catch (error: any) {
       console.error('Roll error:', error);
-      toast({
-        title: "Error",
-        description: error.response?.data?.error || error.message || "Failed to complete bet",
-        variant: "destructive",
-      });
-      // Refresh balance in case it changed
-      refreshBalance();
+      
+      // Handle specific error codes
+      if (error.response?.data?.code === 'WALLET_NOT_REGISTERED') {
+        toast({
+          title: "Wallet Not Registered",
+          description: "Please reconnect your wallet to enable betting",
+          variant: "destructive",
+        });
+      } else if (error.response?.data?.code === 'HOUSE_INSUFFICIENT_FUNDS') {
+        toast({
+          title: "Bet Too Large",
+          description: "House cannot cover this bet. Try a smaller amount.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: error.response?.data?.error || error.message || "Failed to complete bet",
+          variant: "destructive",
+        });
+      }
+      
+      // Refresh balance
+      fetchBalance();
     } finally {
       setIsRolling(false);
     }
@@ -421,10 +342,10 @@ const DiceGame: React.FC = () => {
 
   if (!isConnected) {
     return (
-      <Card className="w-full max-w-3xl mx-auto bg-zinc-900/80 border-zinc-800">
+      <Card className="w-full max-w-3xl mx-auto bg-card border-border">
         <CardContent className="flex flex-col items-center justify-center py-20">
-          <Wallet className="h-12 w-12 text-cyan-400 mb-4" />
-          <p className="text-lg text-gray-400">Please connect your wallet to play</p>
+          <Wallet className="h-12 w-12 text-primary mb-4" />
+          <p className="text-lg text-muted-foreground">Please connect your wallet to play</p>
         </CardContent>
       </Card>
     );
@@ -432,10 +353,10 @@ const DiceGame: React.FC = () => {
 
   if (isLoadingConfig) {
     return (
-      <Card className="w-full max-w-3xl mx-auto bg-zinc-900/80 border-zinc-800">
+      <Card className="w-full max-w-3xl mx-auto bg-card border-border">
         <CardContent className="flex flex-col items-center justify-center py-20">
-          <Loader className="h-10 w-10 animate-spin text-cyan-400 mb-4" />
-          <p className="text-gray-400">Loading game...</p>
+          <Loader className="h-10 w-10 animate-spin text-primary mb-4" />
+          <p className="text-muted-foreground">Loading game...</p>
         </CardContent>
       </Card>
     );
@@ -443,10 +364,10 @@ const DiceGame: React.FC = () => {
 
   if (gameConfig && !gameConfig.enabled) {
     return (
-      <Card className="w-full max-w-3xl mx-auto bg-zinc-900/80 border-zinc-800">
+      <Card className="w-full max-w-3xl mx-auto bg-card border-border">
         <CardContent className="flex flex-col items-center justify-center py-20">
           <p className="text-xl text-red-500 mb-2">Game Disabled</p>
-          <p className="text-gray-400 text-center">
+          <p className="text-muted-foreground text-center">
             The dice game is currently disabled. Please check back later.
           </p>
         </CardContent>
@@ -456,85 +377,59 @@ const DiceGame: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Balance Card */}
-      <Card className="w-full max-w-3xl mx-auto bg-zinc-900/80 border-zinc-800">
+      {/* Wallet Status Card */}
+      <Card className="w-full max-w-3xl mx-auto bg-card border-border">
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center justify-between text-lg">
             <span className="flex items-center gap-2">
-              <Wallet className="h-5 w-5 text-cyan-400" />
-              Game Balance
+              <Wallet className="h-5 w-5 text-primary" />
+              Wallet Balance
             </span>
-            <Button variant="ghost" size="sm" onClick={refreshBalance} disabled={isLoadingBalance}>
+            <Button variant="ghost" size="sm" onClick={fetchBalance} disabled={isLoadingBalance}>
               <RefreshCw className={`h-4 w-4 ${isLoadingBalance ? 'animate-spin' : ''}`} />
             </Button>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between">
             <div>
-              <p className="text-3xl font-bold text-white">{balance.toFixed(2)}</p>
-              <p className="text-sm text-gray-400">{token.symbol} Tokens</p>
+              <p className="text-3xl font-bold text-foreground">{onChainBalance.toFixed(4)}</p>
+              <p className="text-sm text-muted-foreground">{token.symbol} Tokens (On-Chain)</p>
             </div>
-            <div className="text-sm text-gray-400">
-              Wallet: {formatAddress(publicKey || '', 4)}
+            <div className="text-right">
+              <div className="text-sm text-muted-foreground">
+                Wallet: {formatAddress(publicKey || '', 4)}
+              </div>
+              <div className="flex items-center gap-1 text-xs mt-1">
+                {isWalletRegistered || isRegisteredWithBackend ? (
+                  <>
+                    <CheckCircle className="h-3 w-3 text-green-500" />
+                    <span className="text-green-500">Ready for betting</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="h-3 w-3 text-amber-500" />
+                    <span className="text-amber-500">Wallet needs registration</span>
+                  </>
+                )}
+              </div>
             </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Deposit */}
-            <div className="space-y-2">
-              <label className="text-sm text-gray-400">Deposit</label>
-              <div className="flex gap-2">
-                <Input
-                  type="number"
-                  placeholder="Amount"
-                  value={depositAmount}
-                  onChange={(e) => setDepositAmount(e.target.value)}
-                  className="bg-zinc-950/50 border-zinc-800"
-                />
-                <Button 
-                  onClick={handleVerifyDeposit} 
-                  disabled={isDepositing || !depositAmount}
-                  className="bg-emerald-600 hover:bg-emerald-700"
-                >
-                  {isDepositing ? <Loader className="h-4 w-4 animate-spin" /> : <ArrowDown className="h-4 w-4" />}
-                </Button>
-              </div>
-              {houseWalletAddress && (
-                <p className="text-xs text-gray-500">
-                  Send to: {formatAddress(houseWalletAddress, 6)}
-                </p>
-              )}
-            </div>
-            
-            {/* Withdraw */}
-            <div className="space-y-2">
-              <label className="text-sm text-gray-400">Withdraw</label>
-              <div className="flex gap-2">
-                <Input
-                  type="number"
-                  placeholder="Amount"
-                  value={withdrawAmount}
-                  onChange={(e) => setWithdrawAmount(e.target.value)}
-                  className="bg-zinc-950/50 border-zinc-800"
-                />
-                <Button 
-                  onClick={handleWithdraw} 
-                  disabled={isWithdrawing || !withdrawAmount || parseFloat(withdrawAmount) > balance}
-                  className="bg-rose-600 hover:bg-rose-700"
-                >
-                  {isWithdrawing ? <Loader className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
+          <div className="mt-4 p-3 bg-background/50 rounded-lg border border-border">
+            <p className="text-xs text-muted-foreground">
+              <strong>Direct Betting:</strong> Bets are settled directly on-chain. 
+              When you win, tokens are transferred to your wallet automatically. 
+              When you lose, tokens are transferred to the house.
+            </p>
           </div>
         </CardContent>
       </Card>
 
       {/* Game Card */}
-      <Card className="w-full max-w-3xl mx-auto bg-zinc-900/80 border-zinc-800">
+      <Card className="w-full max-w-3xl mx-auto bg-card border-border">
         <CardHeader>
-          <CardTitle className="text-center text-2xl bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent">
+          <CardTitle className="text-center text-2xl bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
             {token.symbol} Dice Game
           </CardTitle>
         </CardHeader>
@@ -543,7 +438,7 @@ const DiceGame: React.FC = () => {
             {/* Controls */}
             <div className="space-y-6">
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-300">Bet Amount</label>
+                <label className="block text-sm font-medium text-muted-foreground">Bet Amount</label>
                 <Input
                   type="number"
                   value={betAmount}
@@ -551,18 +446,18 @@ const DiceGame: React.FC = () => {
                   min={gameConfig ? parseFloat(gameConfig.minBetAmount) : 1}
                   max={Math.min(
                     gameConfig ? parseFloat(gameConfig.maxBetAmount) : 10000,
-                    balance
+                    onChainBalance
                   )}
-                  className="w-full bg-zinc-950/50 border-zinc-800"
+                  className="w-full bg-background/50 border-border"
                 />
-                <div className="flex justify-between text-xs text-gray-500">
+                <div className="flex justify-between text-xs text-muted-foreground">
                   <span>Min: {gameConfig?.minBetAmount}</span>
-                  <span>Max: {Math.min(parseFloat(gameConfig?.maxBetAmount || '10000'), balance).toFixed(2)}</span>
+                  <span>Available: {onChainBalance.toFixed(4)}</span>
                 </div>
               </div>
               
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-300">
+                <label className="block text-sm font-medium text-muted-foreground">
                   Target: {prediction.toLocaleString()}
                 </label>
                 <Slider
@@ -576,19 +471,19 @@ const DiceGame: React.FC = () => {
               </div>
               
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-300">Roll Type</label>
+                <label className="block text-sm font-medium text-muted-foreground">Roll Type</label>
                 <div className="flex gap-2">
                   <Button
                     variant={rollType === 'under' ? 'default' : 'outline'}
                     onClick={() => setRollType('under')}
-                    className={rollType === 'under' ? 'bg-cyan-600 hover:bg-cyan-700' : ''}
+                    className={rollType === 'under' ? 'bg-primary hover:bg-primary/90' : ''}
                   >
                     Roll Under
                   </Button>
                   <Button
                     variant={rollType === 'over' ? 'default' : 'outline'}
                     onClick={() => setRollType('over')}
-                    className={rollType === 'over' ? 'bg-teal-600 hover:bg-teal-700' : ''}
+                    className={rollType === 'over' ? 'bg-secondary hover:bg-secondary/90' : ''}
                   >
                     Roll Over
                   </Button>
@@ -596,25 +491,25 @@ const DiceGame: React.FC = () => {
               </div>
               
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-zinc-950/50 rounded-lg p-3 border border-zinc-800">
-                  <p className="text-xs text-gray-400">Win Chance</p>
-                  <p className="text-lg font-bold text-white">{calculateWinChance()}%</p>
+                <div className="bg-background/50 rounded-lg p-3 border border-border">
+                  <p className="text-xs text-muted-foreground">Win Chance</p>
+                  <p className="text-lg font-bold text-foreground">{calculateWinChance()}%</p>
                 </div>
-                <div className="bg-zinc-950/50 rounded-lg p-3 border border-zinc-800">
-                  <p className="text-xs text-gray-400">Multiplier</p>
-                  <p className="text-lg font-bold text-white">{calculateMultiplier()}x</p>
+                <div className="bg-background/50 rounded-lg p-3 border border-border">
+                  <p className="text-xs text-muted-foreground">Multiplier</p>
+                  <p className="text-lg font-bold text-foreground">{calculateMultiplier()}x</p>
                 </div>
               </div>
               
-              <div className="bg-zinc-950/50 rounded-lg p-3 border border-zinc-800">
-                <p className="text-xs text-gray-400">Potential Profit</p>
-                <p className="text-lg font-bold text-emerald-400">+{calculateProfit()} {token.symbol}</p>
+              <div className="bg-background/50 rounded-lg p-3 border border-border">
+                <p className="text-xs text-muted-foreground">Potential Profit</p>
+                <p className="text-lg font-bold text-accent">+{calculateProfit()} {token.symbol}</p>
               </div>
               
               <div className="space-y-2">
-                <label className="block text-xs text-gray-400">Client Seed</label>
+                <label className="block text-xs text-muted-foreground">Client Seed</label>
                 <div className="flex gap-2">
-                  <code className="flex-1 text-xs bg-zinc-950/50 p-2 rounded overflow-hidden text-ellipsis text-gray-400 border border-zinc-800">
+                  <code className="flex-1 text-xs bg-background/50 p-2 rounded overflow-hidden text-ellipsis text-muted-foreground border border-border">
                     {clientSeed}
                   </code>
                   <Button variant="ghost" size="sm" onClick={generateClientSeed}>
@@ -628,15 +523,21 @@ const DiceGame: React.FC = () => {
             <div className="space-y-6">
               <Button
                 onClick={handleRoll}
-                disabled={isRolling || !gameConfig?.enabled || balance < betAmount}
-                className="w-full h-16 text-lg bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700"
+                disabled={isRolling || !gameConfig?.enabled || onChainBalance < betAmount || (!isWalletRegistered && !isRegisteredWithBackend)}
+                className="w-full h-16 text-lg bg-gradient-to-r from-primary to-secondary hover:opacity-90"
               >
                 {isRolling ? 'Rolling...' : 'Roll Dice'}
               </Button>
               
-              {balance < betAmount && (
+              {onChainBalance < betAmount && (
                 <p className="text-center text-amber-500 text-sm">
-                  Insufficient balance. Please deposit more {token.symbol} tokens.
+                  Insufficient balance. You need more {token.symbol} tokens.
+                </p>
+              )}
+              
+              {(!isWalletRegistered && !isRegisteredWithBackend) && (
+                <p className="text-center text-amber-500 text-sm">
+                  Wallet not registered. Please reconnect your wallet.
                 </p>
               )}
               
@@ -644,11 +545,11 @@ const DiceGame: React.FC = () => {
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="p-4 rounded-lg border border-zinc-800 bg-zinc-950/50 space-y-4"
+                  className="p-4 rounded-lg border border-border bg-background/50 space-y-4"
                 >
                   <div className="text-center">
-                    <div className="text-sm text-gray-400">Roll Result</div>
-                    <div className="text-5xl font-bold my-2 text-white">
+                    <div className="text-sm text-muted-foreground">Roll Result</div>
+                    <div className="text-5xl font-bold my-2 text-foreground">
                       {gameResult.roll.toLocaleString()}
                     </div>
                     <div className={`text-lg font-semibold ${gameResult.won ? 'text-green-500' : 'text-red-500'}`}>
@@ -657,33 +558,44 @@ const DiceGame: React.FC = () => {
                   </div>
                   
                   <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div className="text-gray-400">Target:</div>
-                    <div className="text-right font-medium text-white">
+                    <div className="text-muted-foreground">Target:</div>
+                    <div className="text-right font-medium text-foreground">
                       {rollType === 'under' ? `< ${prediction.toLocaleString()}` : `> ${prediction.toLocaleString()}`}
                     </div>
                     
-                    <div className="text-gray-400">Profit:</div>
+                    <div className="text-muted-foreground">Profit:</div>
                     <div className={`text-right font-medium ${parseFloat(gameResult.profit) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                       {parseFloat(gameResult.profit) >= 0 ? `+${gameResult.profit}` : gameResult.profit} {token.symbol}
                     </div>
                   </div>
                   
-                  {gameResult.verification && (
+                  {gameResult.txSignature && (
                     <Button 
                       variant="outline" 
+                      size="sm"
+                      onClick={() => window.open(getExplorerUrl(gameResult.txSignature!), '_blank')}
+                      className="w-full text-xs"
+                    >
+                      <ExternalLink className="h-3 w-3 mr-2" />
+                      View Transaction
+                    </Button>
+                  )}
+                  
+                  {gameResult.verification && (
+                    <Button 
+                      variant="ghost" 
                       size="sm"
                       onClick={verifyRoll}
                       className="w-full text-xs"
                     >
-                      <ExternalLink className="h-3 w-3 mr-2" />
-                      Verify This Roll
+                      Verify Fairness
                     </Button>
                   )}
                 </motion.div>
               )}
               
               {!gameResult && !isRolling && (
-                <div className="text-center text-gray-500 italic py-10">
+                <div className="text-center text-muted-foreground italic py-10">
                   Results will appear here after you roll.
                 </div>
               )}
@@ -697,7 +609,7 @@ const DiceGame: React.FC = () => {
                   >
                     🎲
                   </motion.div>
-                  <p className="text-gray-400">Rolling...</p>
+                  <p className="text-muted-foreground">Rolling & processing transaction...</p>
                 </div>
               )}
             </div>

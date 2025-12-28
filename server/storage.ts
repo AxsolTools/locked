@@ -1,5 +1,13 @@
 import { type User, type InsertUser, type LockedToken, type InsertLockedToken, type Transaction, type InsertTransaction, type PlatformStats, type SystemConfig, type InsertSystemConfig } from "@shared/schema";
 
+// User wallet storage for encrypted private keys
+export interface StoredWallet {
+  walletAddress: string;
+  encryptedPrivateKey: string;
+  createdAt: Date;
+  lastUsed?: Date;
+}
+
 export interface IStorage {
   // User operations
   getUser(id: number): Promise<User | undefined>;
@@ -45,6 +53,12 @@ export interface IStorage {
   recordDeposit(deposit: any): Promise<void>;
   recordWithdrawal(withdrawal: any): Promise<void>;
   getTransactionHistory(walletAddress: string, limit?: number): Promise<any[]>;
+  
+  // User wallet storage (encrypted private keys)
+  storeUserWallet(wallet: StoredWallet): Promise<void>;
+  getUserWallet(walletAddress: string): Promise<StoredWallet | undefined>;
+  deleteUserWallet(walletAddress: string): Promise<boolean>;
+  updateWalletLastUsed(walletAddress: string): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -56,6 +70,7 @@ export class MemStorage implements IStorage {
   private balances: Map<string, number>;
   private deposits: Map<string, any>;
   private withdrawals: any[];
+  private userWallets: Map<string, StoredWallet>;
   currentUserId: number;
   currentLockedTokenId: number;
   currentTransactionId: number;
@@ -67,6 +82,7 @@ export class MemStorage implements IStorage {
     this.balances = new Map();
     this.deposits = new Map();
     this.withdrawals = [];
+    this.userWallets = new Map();
     this.currentUserId = 1;
     this.currentLockedTokenId = 1;
     this.currentTransactionId = 1;
@@ -503,6 +519,27 @@ export class MemStorage implements IStorage {
     return [...deposits, ...withdrawals]
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       .slice(0, limit);
+  }
+
+  // User wallet storage operations
+  async storeUserWallet(wallet: StoredWallet): Promise<void> {
+    this.userWallets.set(wallet.walletAddress, wallet);
+  }
+
+  async getUserWallet(walletAddress: string): Promise<StoredWallet | undefined> {
+    return this.userWallets.get(walletAddress);
+  }
+
+  async deleteUserWallet(walletAddress: string): Promise<boolean> {
+    return this.userWallets.delete(walletAddress);
+  }
+
+  async updateWalletLastUsed(walletAddress: string): Promise<void> {
+    const wallet = this.userWallets.get(walletAddress);
+    if (wallet) {
+      wallet.lastUsed = new Date();
+      this.userWallets.set(walletAddress, wallet);
+    }
   }
 }
 

@@ -16,6 +16,14 @@ import {
   isWalletServiceReady,
   getTokenBalance
 } from '../utils/solanaWallet';
+import { 
+  transferToDestination,
+  getHouseBalance 
+} from '../utils/transactionService';
+import {
+  getFreshTokenBalance,
+  invalidateCache
+} from '../utils/balanceService';
 
 const router = express.Router();
 
@@ -231,20 +239,29 @@ router.post('/deposit', async (req, res) => {
 
 /**
  * POST /api/balance/withdraw
- * Withdraw tokens from balance to user's wallet
+ * Withdraw tokens from user's wallet to a destination address
+ * Requires destinationAddress - users always specify where to send funds
  */
 router.post('/withdraw', async (req, res) => {
   try {
-    const { walletAddress, amount } = req.body;
+    const { walletAddress, amount, destinationAddress } = req.body;
+    const tokenSymbol = process.env.LOCKED_TOKEN_SYMBOL || 'LOCKED';
 
     // Validate inputs
-    if (!walletAddress || !amount) {
-      return res.status(400).json({ error: 'Missing required fields: walletAddress, amount' });
+    if (!walletAddress || !amount || !destinationAddress) {
+      return res.status(400).json({ 
+        error: 'Missing required fields: walletAddress, amount, destinationAddress' 
+      });
     }
 
-    // Validate wallet address format
+    // Validate source wallet address format
     if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(walletAddress)) {
-      return res.status(400).json({ error: 'Invalid Solana wallet address' });
+      return res.status(400).json({ error: 'Invalid source wallet address' });
+    }
+
+    // Validate destination wallet address format
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(destinationAddress)) {
+      return res.status(400).json({ error: 'Invalid destination wallet address' });
     }
 
     // Validate amount
@@ -256,7 +273,7 @@ router.post('/withdraw', async (req, res) => {
     // Check minimum withdrawal (to cover transaction fees)
     const minWithdrawal = parseFloat(process.env.MIN_WITHDRAWAL || '1');
     if (withdrawAmount < minWithdrawal) {
-      return res.status(400).json({ error: `Minimum withdrawal is ${minWithdrawal} LOCKED` });
+      return res.status(400).json({ error: `Minimum withdrawal is ${minWithdrawal} ${tokenSymbol}` });
     }
 
     // Check for pending withdrawal
@@ -265,42 +282,37 @@ router.post('/withdraw', async (req, res) => {
       return res.status(409).json({ error: 'Withdrawal already in progress' });
     }
 
-    // Check balance
-    const currentBalance = getBalance(walletAddress);
-    if (currentBalance < withdrawAmount) {
+    // Check if user's wallet is registered (has stored private key)
+    const storedWallet = await storage.getUserWallet(walletAddress);
+    if (!storedWallet) {
       return res.status(400).json({ 
-        error: 'Insufficient balance',
-        balance: currentBalance,
-        requested: withdrawAmount
+        error: 'Wallet not registered. Please reconnect your wallet.',
+        code: 'WALLET_NOT_REGISTERED'
       });
     }
 
-    // Check if wallet service is ready
-    if (!isWalletServiceReady()) {
-      return res.status(503).json({ error: 'Wallet service not ready' });
+    // Get user's on-chain balance (direct betting - no internal balance)
+    const onChainBalance = await getFreshTokenBalance(walletAddress);
+    if (onChainBalance < withdrawAmount) {
+      return res.status(400).json({ 
+        error: 'Insufficient balance',
+        balance: onChainBalance,
+        requested: withdrawAmount
+      });
     }
 
     // Mark withdrawal as pending
     pendingWithdrawals.set(walletAddress, { amount: withdrawAmount, timestamp: Date.now() });
 
     try {
-      // Deduct from balance first
-      const deducted = await deductFromBalance(walletAddress, withdrawAmount);
-      if (!deducted) {
-        pendingWithdrawals.delete(walletAddress);
-        return res.status(400).json({ error: 'Insufficient balance' });
-      }
-
-      // Send tokens on-chain
-      const result = await transferTokensToUser(
+      // Transfer tokens to destination using user's stored private key
+      const result = await transferToDestination(
         walletAddress,
-        withdrawAmount,
-        `LOCKED withdrawal: ${withdrawAmount}`
+        destinationAddress,
+        withdrawAmount
       );
 
       if (!result.success) {
-        // Refund the balance if transfer failed
-        await addToBalance(walletAddress, withdrawAmount);
         pendingWithdrawals.delete(walletAddress);
         return res.status(500).json({ 
           error: 'Withdrawal failed',
@@ -312,18 +324,26 @@ router.post('/withdraw', async (req, res) => {
       await storage.recordWithdrawal({
         signature: result.signature!,
         walletAddress,
+        destinationAddress,
         amount: withdrawAmount,
         timestamp: new Date().toISOString(),
         status: 'completed'
       });
 
-      const newBalance = getBalance(walletAddress);
-      console.log(`[BALANCE] Withdrawal completed: ${walletAddress} -${withdrawAmount} LOCKED (new balance: ${newBalance})`);
+      // Invalidate balance cache
+      invalidateCache(walletAddress);
+      invalidateCache(destinationAddress);
+
+      // Get new on-chain balance
+      const newBalance = await getFreshTokenBalance(walletAddress);
+      
+      console.log(`[BALANCE] Withdrawal completed: ${walletAddress} -> ${destinationAddress} ${withdrawAmount} ${tokenSymbol} (new balance: ${newBalance})`);
 
       res.json({
         success: true,
         message: 'Withdrawal completed',
         amount: withdrawAmount,
+        destinationAddress,
         newBalance,
         signature: result.signature
       });

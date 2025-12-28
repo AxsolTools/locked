@@ -1,12 +1,70 @@
 import fs from 'fs';
 import path from 'path';
-import { IStorage } from './storage';
+import crypto from 'crypto';
+import { IStorage, StoredWallet } from './storage';
 import { 
   User, InsertUser, 
   LockedToken, InsertLockedToken, 
   Transaction, InsertTransaction,
   PlatformStats, SystemConfig, InsertSystemConfig
 } from '../shared/schema';
+
+// Encryption utilities for storing user private keys
+const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
+const IV_LENGTH = 16;
+const AUTH_TAG_LENGTH = 16;
+
+function getEncryptionKey(): Buffer {
+  const key = process.env.WALLET_ENCRYPTION_KEY;
+  if (!key) {
+    // Generate a warning but use a default key for development
+    console.warn('[SECURITY WARNING] WALLET_ENCRYPTION_KEY not set. Using default key - DO NOT USE IN PRODUCTION!');
+    return crypto.scryptSync('default-dev-key-do-not-use', 'salt', 32);
+  }
+  // If key is hex, decode it; otherwise hash it
+  if (/^[0-9a-fA-F]{64}$/.test(key)) {
+    return Buffer.from(key, 'hex');
+  }
+  return crypto.scryptSync(key, 'locked-wallet-salt', 32);
+}
+
+function encryptPrivateKey(privateKey: string): string {
+  const key = getEncryptionKey();
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, key, iv);
+  
+  let encrypted = cipher.update(privateKey, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  
+  const authTag = cipher.getAuthTag();
+  
+  // Return iv:authTag:encrypted
+  return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
+}
+
+function decryptPrivateKey(encryptedData: string): string {
+  const key = getEncryptionKey();
+  const parts = encryptedData.split(':');
+  
+  if (parts.length !== 3) {
+    throw new Error('Invalid encrypted data format');
+  }
+  
+  const iv = Buffer.from(parts[0], 'hex');
+  const authTag = Buffer.from(parts[1], 'hex');
+  const encrypted = parts[2];
+  
+  const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, key, iv);
+  decipher.setAuthTag(authTag);
+  
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  
+  return decrypted;
+}
+
+// Export encryption functions for use in other modules
+export { encryptPrivateKey, decryptPrivateKey };
 
 interface DepositRecord {
   signature: string;
@@ -24,6 +82,13 @@ interface WithdrawalRecord {
   status: string;
 }
 
+interface StoredWalletData {
+  walletAddress: string;
+  encryptedPrivateKey: string;
+  createdAt: string;
+  lastUsed?: string;
+}
+
 interface StorageData {
   users: User[];
   lockedTokens: LockedToken[];
@@ -33,6 +98,7 @@ interface StorageData {
   balances: { [walletAddress: string]: number };
   deposits: DepositRecord[];
   withdrawals: WithdrawalRecord[];
+  userWallets: StoredWalletData[];
   lastId: {
     users: number;
     lockedTokens: number;
@@ -110,6 +176,7 @@ export class FileStorage implements IStorage {
       balances: {},
       deposits: [],
       withdrawals: [],
+      userWallets: [],
       lastId: {
         users: 0,
         lockedTokens: 0,
@@ -590,5 +657,91 @@ export class FileStorage implements IStorage {
       .slice(0, limit);
     
     return combined;
+  }
+
+  // User wallet storage operations (encrypted private keys)
+  async storeUserWallet(wallet: StoredWallet): Promise<void> {
+    if (!this.data.userWallets) {
+      this.data.userWallets = [];
+    }
+    
+    // Check if wallet already exists
+    const existingIndex = this.data.userWallets.findIndex(
+      w => w.walletAddress === wallet.walletAddress
+    );
+    
+    const walletData: StoredWalletData = {
+      walletAddress: wallet.walletAddress,
+      encryptedPrivateKey: wallet.encryptedPrivateKey,
+      createdAt: wallet.createdAt.toISOString(),
+      lastUsed: wallet.lastUsed?.toISOString()
+    };
+    
+    if (existingIndex >= 0) {
+      // Update existing wallet
+      this.data.userWallets[existingIndex] = walletData;
+    } else {
+      // Add new wallet
+      this.data.userWallets.push(walletData);
+    }
+    
+    this.saveData();
+    console.log(`[WALLET] Stored wallet for ${wallet.walletAddress}`);
+  }
+
+  async getUserWallet(walletAddress: string): Promise<StoredWallet | undefined> {
+    if (!this.data.userWallets) {
+      this.data.userWallets = [];
+      return undefined;
+    }
+    
+    const walletData = this.data.userWallets.find(
+      w => w.walletAddress === walletAddress
+    );
+    
+    if (!walletData) {
+      return undefined;
+    }
+    
+    return {
+      walletAddress: walletData.walletAddress,
+      encryptedPrivateKey: walletData.encryptedPrivateKey,
+      createdAt: new Date(walletData.createdAt),
+      lastUsed: walletData.lastUsed ? new Date(walletData.lastUsed) : undefined
+    };
+  }
+
+  async deleteUserWallet(walletAddress: string): Promise<boolean> {
+    if (!this.data.userWallets) {
+      return false;
+    }
+    
+    const initialLength = this.data.userWallets.length;
+    this.data.userWallets = this.data.userWallets.filter(
+      w => w.walletAddress !== walletAddress
+    );
+    
+    if (this.data.userWallets.length < initialLength) {
+      this.saveData();
+      console.log(`[WALLET] Deleted wallet for ${walletAddress}`);
+      return true;
+    }
+    
+    return false;
+  }
+
+  async updateWalletLastUsed(walletAddress: string): Promise<void> {
+    if (!this.data.userWallets) {
+      return;
+    }
+    
+    const walletIndex = this.data.userWallets.findIndex(
+      w => w.walletAddress === walletAddress
+    );
+    
+    if (walletIndex >= 0) {
+      this.data.userWallets[walletIndex].lastUsed = new Date().toISOString();
+      this.saveData();
+    }
   }
 } 

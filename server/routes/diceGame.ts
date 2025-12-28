@@ -1,19 +1,20 @@
 /**
- * Dice Game Routes - Solana Version
+ * Dice Game Routes - Direct On-Chain Betting
  * 
- * This module implements a provably fair dice game using balance-based betting.
- * Users deposit LOCKED tokens to their game balance, then bet against that balance.
+ * This module implements a provably fair dice game with direct on-chain token transfers.
+ * No deposit system - users bet directly from their wallet.
  * 
- * Key fairness features:
+ * Key features:
+ * 1. Real-time balance checking from blockchain
+ * 2. Instant on-chain transfers: User -> House (loss) or House -> User (win)
+ * 3. Rate limiting and abuse prevention
+ * 4. Server-side transaction signing using stored user keys
+ * 
+ * Fairness system:
  * 1. Server seed is generated and hashed before the bet
  * 2. Client seed is provided by the player
  * 3. Combined seeds determine the roll result
  * 4. Original server seed is revealed after roll for verification
- * 
- * Game mechanics:
- * - Players predict if a random number (0-999999.99) will be over/under their target
- * - Win chance is directly related to the target number
- * - Payouts are inversely proportional to win probability (minus house edge)
  */
 
 import express from 'express';
@@ -23,7 +24,18 @@ import { WebSocket, WebSocketServer } from 'ws';
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
-import { getBalance, addToBalance, deductFromBalance } from './balance';
+import { 
+  hasSufficientBalance, 
+  getLockedTokenBalance, 
+  invalidateCache,
+  getFreshTokenBalance 
+} from '../utils/balanceService';
+import { 
+  transferFromUser, 
+  transferToUser, 
+  getHouseBalance,
+  householdHasSufficientBalance 
+} from '../utils/transactionService';
 
 const router = express.Router();
 
@@ -37,6 +49,15 @@ const logger = {
 
 // Token configuration from environment
 const TOKEN_SYMBOL = process.env.LOCKED_TOKEN_SYMBOL || 'LOCKED';
+
+// Rate limiting configuration
+const MAX_BETS_PER_MINUTE = parseInt(process.env.MAX_BETS_PER_MINUTE || '10', 10);
+const MIN_BET_INTERVAL_MS = parseInt(process.env.MIN_BET_INTERVAL_MS || '3000', 10);
+
+// Rate limiting state
+const userLastBetTime = new Map<string, number>();
+const userBetsPerMinute = new Map<string, { count: number; resetTime: number }>();
+const pendingBets = new Set<string>(); // Wallets with pending bets
 
 // Define interfaces
 interface Bet {
@@ -56,6 +77,8 @@ interface Bet {
   won?: boolean;
   profit?: string;
   verified?: boolean;
+  txSignature?: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
 }
 
 // Setup data directory and file path for persisting bets
@@ -133,6 +156,7 @@ export const initializeWebSocket = (server: http.Server) => {
     // Send recent bets to newly connected client
     try {
       const recentBets = Array.from(bets.values())
+        .filter(bet => bet.status === 'completed')
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 50);
       
@@ -146,7 +170,8 @@ export const initializeWebSocket = (server: http.Server) => {
         result: bet.result,
         won: bet.won,
         profit: bet.profit,
-        tokenSymbol: TOKEN_SYMBOL
+        tokenSymbol: TOKEN_SYMBOL,
+        txSignature: bet.txSignature
       }));
       
       if (historicalBets.length > 0) {
@@ -236,6 +261,56 @@ const applyHouseEdge = (winChance: number, houseEdge: number) => {
 };
 
 /**
+ * Check rate limiting for a user
+ */
+function checkRateLimit(walletAddress: string): { allowed: boolean; error?: string } {
+  const now = Date.now();
+  
+  // Check if user has a pending bet
+  if (pendingBets.has(walletAddress)) {
+    return { allowed: false, error: 'Please wait for your current bet to complete' };
+  }
+  
+  // Check minimum interval between bets
+  const lastBetTime = userLastBetTime.get(walletAddress) || 0;
+  if (now - lastBetTime < MIN_BET_INTERVAL_MS) {
+    const waitTime = Math.ceil((MIN_BET_INTERVAL_MS - (now - lastBetTime)) / 1000);
+    return { allowed: false, error: `Please wait ${waitTime} seconds before betting again` };
+  }
+  
+  // Check bets per minute limit
+  const minuteStats = userBetsPerMinute.get(walletAddress);
+  if (minuteStats) {
+    if (now < minuteStats.resetTime) {
+      if (minuteStats.count >= MAX_BETS_PER_MINUTE) {
+        const waitTime = Math.ceil((minuteStats.resetTime - now) / 1000);
+        return { allowed: false, error: `Rate limit reached. Please wait ${waitTime} seconds` };
+      }
+    } else {
+      // Reset the counter
+      userBetsPerMinute.set(walletAddress, { count: 0, resetTime: now + 60000 });
+    }
+  } else {
+    userBetsPerMinute.set(walletAddress, { count: 0, resetTime: now + 60000 });
+  }
+  
+  return { allowed: true };
+}
+
+/**
+ * Update rate limiting after a bet
+ */
+function updateRateLimit(walletAddress: string): void {
+  const now = Date.now();
+  userLastBetTime.set(walletAddress, now);
+  
+  const minuteStats = userBetsPerMinute.get(walletAddress);
+  if (minuteStats) {
+    minuteStats.count++;
+  }
+}
+
+/**
  * GET /api/dice/config
  * Get dice game configuration
  */
@@ -247,7 +322,9 @@ router.get('/config', async (req, res) => {
       maxBetAmount: process.env.MAX_BET_AMOUNT || "10000",
       decimalPlaces: 2,
       payoutEnabled: true,
-      houseEdge: parseFloat(process.env.HOUSE_EDGE || "1.5")
+      houseEdge: parseFloat(process.env.HOUSE_EDGE || "1.5"),
+      maxProfit: process.env.MAX_PROFIT || "5000",
+      directBetting: true // New flag to indicate direct on-chain betting
     };
     
     try {
@@ -263,7 +340,9 @@ router.get('/config', async (req, res) => {
         maxBetAmount: systemConfig.diceGameConfig.maxBetAmount,
         decimalPlaces: systemConfig.diceGameConfig.decimalPlaces,
         payoutEnabled: systemConfig.diceGameConfig.payoutEnabled,
-        houseEdge: systemConfig.diceGameConfig.houseEdge
+        houseEdge: systemConfig.diceGameConfig.houseEdge,
+        maxProfit: systemConfig.diceGameConfig.maxProfit,
+        directBetting: true
       });
     } catch (configError) {
       logger.error('Error retrieving system configuration:', configError);
@@ -276,8 +355,40 @@ router.get('/config', async (req, res) => {
 });
 
 /**
+ * GET /api/dice/balance/:walletAddress
+ * Get user's on-chain token balance for betting
+ */
+router.get('/balance/:walletAddress', async (req, res) => {
+  try {
+    const { walletAddress } = req.params;
+    
+    if (!walletAddress || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(walletAddress)) {
+      return res.status(400).json({ error: 'Invalid wallet address' });
+    }
+    
+    // Get fresh balance from chain
+    const balance = await getFreshTokenBalance(walletAddress);
+    
+    // Check if wallet is registered
+    const wallet = await storage.getUserWallet(walletAddress);
+    
+    res.json({
+      success: true,
+      walletAddress,
+      balance,
+      currency: TOKEN_SYMBOL,
+      registered: !!wallet,
+      directBetting: true
+    });
+  } catch (error: any) {
+    logger.error('Error getting balance:', error);
+    res.status(500).json({ error: 'Failed to get balance' });
+  }
+});
+
+/**
  * POST /api/dice/bet
- * Place a new bet using balance system
+ * Place a new bet with direct on-chain settlement
  */
 router.post('/bet', async (req, res) => {
   try {
@@ -291,6 +402,21 @@ router.post('/bet', async (req, res) => {
     // Validate Solana address format
     if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(walletAddress)) {
       return res.status(400).json({ error: 'Invalid Solana wallet address' });
+    }
+
+    // Check if wallet is registered (has stored private key)
+    const storedWallet = await storage.getUserWallet(walletAddress);
+    if (!storedWallet) {
+      return res.status(400).json({ 
+        error: 'Wallet not registered. Please reconnect your wallet.',
+        code: 'WALLET_NOT_REGISTERED'
+      });
+    }
+
+    // Check rate limiting
+    const rateLimitCheck = checkRateLimit(walletAddress);
+    if (!rateLimitCheck.allowed) {
+      return res.status(429).json({ error: rateLimitCheck.error });
     }
 
     // Get configuration
@@ -318,12 +444,12 @@ router.post('/bet', async (req, res) => {
       });
     }
 
-    // Check user balance
-    const userBalance = getBalance(walletAddress);
-    if (userBalance < betAmountNum) {
+    // Check user's on-chain balance
+    const { sufficient, currentBalance } = await hasSufficientBalance(walletAddress, betAmountNum);
+    if (!sufficient) {
       return res.status(400).json({ 
         error: 'Insufficient balance',
-        balance: userBalance,
+        balance: currentBalance,
         required: betAmountNum
       });
     }
@@ -338,18 +464,30 @@ router.post('/bet', async (req, res) => {
     const houseEdge = config.houseEdge || 1.5;
     const multiplier = applyHouseEdge(winChance, houseEdge);
 
+    // Calculate potential profit
+    const potentialProfit = calculateProfit(betAmountNum, multiplier) - betAmountNum;
+    const maxProfit = parseFloat(config.maxProfit || "5000");
+    const cappedProfit = Math.min(potentialProfit, maxProfit);
+
+    // Check if house has sufficient balance for potential payout
+    const potentialPayout = betAmountNum + cappedProfit;
+    const houseHasFunds = await householdHasSufficientBalance(potentialPayout);
+    if (!houseHasFunds) {
+      return res.status(503).json({ 
+        error: 'House temporarily unable to cover this bet. Please try a smaller amount.',
+        code: 'HOUSE_INSUFFICIENT_FUNDS'
+      });
+    }
+
+    // Mark user as having pending bet
+    pendingBets.add(walletAddress);
+
     // Generate bet ID and server seed
     const betId = generateBetId();
     const serverSeed = generateServerSeed();
     const serverSeedHash = crypto.createHash('sha256').update(serverSeed).digest('hex');
 
-    // Deduct bet amount from balance immediately
-    const deducted = await deductFromBalance(walletAddress, betAmountNum);
-    if (!deducted) {
-      return res.status(400).json({ error: 'Failed to deduct balance' });
-    }
-
-    // Record the bet
+    // Create bet record
     const bet: Bet = {
       id: betId,
       walletAddress,
@@ -361,13 +499,17 @@ router.post('/bet', async (req, res) => {
       serverSeed,
       serverSeedHash,
       date: new Date().toISOString(),
-      rolled: false
+      rolled: false,
+      status: 'pending'
     };
 
     bets.set(betId, bet);
     saveBetsToFile();
 
-    // Broadcast bet to live feed
+    // Update rate limiting
+    updateRateLimit(walletAddress);
+
+    // Broadcast bet placement to live feed
     broadcastToClients({
       type: 'bet',
       bet: {
@@ -377,19 +519,23 @@ router.post('/bet', async (req, res) => {
         target,
         rollType: isOver ? 'over' : 'under',
         timestamp: bet.date,
-        tokenSymbol: TOKEN_SYMBOL
+        tokenSymbol: TOKEN_SYMBOL,
+        status: 'pending'
       }
     });
 
+    // Return bet details (don't process roll yet)
     res.json({
       success: true,
       betId,
       serverSeedHash,
       winChance,
       multiplier,
-      newBalance: getBalance(walletAddress)
+      potentialProfit: cappedProfit,
+      balance: currentBalance,
+      directBetting: true
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error placing bet:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -397,7 +543,7 @@ router.post('/bet', async (req, res) => {
 
 /**
  * POST /api/dice/roll
- * Process the dice roll and determine result
+ * Process the dice roll and execute on-chain transfer
  */
 router.post('/roll', async (req, res) => {
   try {
@@ -420,13 +566,25 @@ router.post('/roll', async (req, res) => {
 
     // Check if already rolled
     if (bet.rolled) {
-      return res.status(400).json({ error: 'Bet has already been rolled' });
+      return res.json({
+        success: true,
+        betId,
+        result: bet.result,
+        won: bet.won,
+        profit: bet.profit,
+        txSignature: bet.txSignature,
+        alreadyRolled: true
+      });
     }
 
     // Verify client seed
     if (bet.clientSeed !== clientSeed) {
       return res.status(400).json({ error: 'Client seed does not match' });
     }
+
+    // Update bet status
+    bet.status = 'processing';
+    bets.set(betId, bet);
 
     // Get config for max profit
     const systemConfig = await storage.getSystemConfig();
@@ -447,15 +605,43 @@ router.post('/roll', async (req, res) => {
 
     // Calculate profit
     let profit = 0;
+    let txSignature: string | undefined;
+    let txError: string | undefined;
+    const betAmountNum = parseFloat(bet.amount);
+
     if (won) {
-      const rawProfit = calculateProfit(parseFloat(bet.amount), bet.multiplier) - parseFloat(bet.amount);
+      // User won - transfer from house to user
+      const rawProfit = calculateProfit(betAmountNum, bet.multiplier) - betAmountNum;
       profit = Math.min(rawProfit, maxProfit);
       
-      // Add winnings to balance (original bet was already deducted)
-      const totalReturn = parseFloat(bet.amount) + profit;
-      await addToBalance(walletAddress, totalReturn);
+      logger.info(`User ${walletAddress} WON! Transferring ${profit} ${TOKEN_SYMBOL} from house`);
+      
+      const transferResult = await transferToUser(walletAddress, profit);
+      
+      if (transferResult.success) {
+        txSignature = transferResult.signature;
+        logger.info(`Win payout successful: ${txSignature}`);
+      } else {
+        txError = transferResult.error;
+        logger.error(`Win payout failed: ${txError}`);
+        // Still mark as won, but note the transfer issue
+      }
+    } else {
+      // User lost - transfer from user to house
+      profit = -betAmountNum;
+      
+      logger.info(`User ${walletAddress} LOST. Transferring ${betAmountNum} ${TOKEN_SYMBOL} to house`);
+      
+      const transferResult = await transferFromUser(walletAddress, betAmountNum);
+      
+      if (transferResult.success) {
+        txSignature = transferResult.signature;
+        logger.info(`Loss collection successful: ${txSignature}`);
+      } else {
+        txError = transferResult.error;
+        logger.error(`Loss collection failed: ${txError}`);
+      }
     }
-    // If lost, bet amount was already deducted when bet was placed
 
     // Update bet with results
     bet.rolled = true;
@@ -463,16 +649,32 @@ router.post('/roll', async (req, res) => {
     bet.won = won;
     bet.profit = won ? profit.toString() : `-${bet.amount}`;
     bet.resultHash = resultHash;
+    bet.txSignature = txSignature;
+    bet.status = txSignature ? 'completed' : 'failed';
     bets.set(betId, bet);
     saveBetsToFile();
+
+    // Remove from pending bets
+    pendingBets.delete(walletAddress);
+
+    // Invalidate balance cache for both parties
+    invalidateCache(walletAddress);
+
+    // Get new balance
+    const newBalance = await getFreshTokenBalance(walletAddress);
 
     // Broadcast result to live feed
     broadcastToClients({
       type: 'result',
       betId,
+      address: walletAddress,
       result: resultNumber,
+      target: bet.target,
+      isOver: bet.isOver,
       won,
-      profit: bet.profit
+      profit: bet.profit,
+      txSignature,
+      tokenSymbol: TOKEN_SYMBOL
     });
 
     // Return results
@@ -487,11 +689,20 @@ router.post('/roll', async (req, res) => {
       isOver: bet.isOver,
       won,
       profit: bet.profit,
-      newBalance: getBalance(walletAddress),
-      tokenSymbol: TOKEN_SYMBOL
+      newBalance,
+      txSignature,
+      txError,
+      tokenSymbol: TOKEN_SYMBOL,
+      directBetting: true
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error processing roll:', error);
+    
+    // Clean up pending bet on error
+    if (req.body.walletAddress) {
+      pendingBets.delete(req.body.walletAddress);
+    }
+    
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -547,7 +758,8 @@ router.get('/verify/:betId', (req, res) => {
       target: bet.target,
       isOver: bet.isOver,
       won: bet.won,
-      recalculatedWin: winCondition
+      recalculatedWin: winCondition,
+      txSignature: bet.txSignature
     });
   } catch (error) {
     console.error('Error verifying roll:', error);
@@ -576,7 +788,7 @@ function calculateLeaderboardFromBets() {
   const playerStats = new Map();
   
   for (const bet of bets.values()) {
-    if (!bet.rolled) continue;
+    if (!bet.rolled || bet.status !== 'completed') continue;
     
     const walletAddress = bet.walletAddress;
     
@@ -687,7 +899,9 @@ router.get('/history/:walletAddress', (req, res) => {
         won: bet.won,
         profit: bet.profit,
         date: bet.date,
-        verified: bet.verified
+        verified: bet.verified,
+        txSignature: bet.txSignature,
+        status: bet.status
       }));
     
     res.json({
@@ -698,6 +912,24 @@ router.get('/history/:walletAddress', (req, res) => {
   } catch (error) {
     console.error('Error getting bet history:', error);
     res.status(500).json({ error: 'Failed to get bet history' });
+  }
+});
+
+/**
+ * GET /api/dice/house-balance
+ * Get house wallet balance (for transparency)
+ */
+router.get('/house-balance', async (req, res) => {
+  try {
+    const balance = await getHouseBalance();
+    res.json({
+      success: true,
+      balance,
+      currency: TOKEN_SYMBOL
+    });
+  } catch (error) {
+    console.error('Error getting house balance:', error);
+    res.status(500).json({ error: 'Failed to get house balance' });
   }
 });
 

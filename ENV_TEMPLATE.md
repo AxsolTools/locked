@@ -97,11 +97,29 @@ ADMIN_EMAIL=
 # ===========================================
 # Security Configuration
 # ===========================================
+# Wallet encryption key for storing user private keys
+# Must be a 64-character hex string (32 bytes)
+# Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+# SECURITY WARNING: Keep this secret! Never share or commit!
+WALLET_ENCRYPTION_KEY=your_64_char_hex_key_here
+
 # Rate limiting window in milliseconds
 RATE_LIMIT_WINDOW_MS=60000
 
 # Maximum requests per window
 RATE_LIMIT_MAX_REQUESTS=100
+
+# ===========================================
+# Direct Betting Configuration
+# ===========================================
+# Maximum bets per minute per user (abuse prevention)
+MAX_BETS_PER_MINUTE=10
+
+# Minimum time between bets in milliseconds
+MIN_BET_INTERVAL_MS=3000
+
+# Minimum withdrawal amount
+MIN_WITHDRAWAL=1
 
 # ===========================================
 # Logging Configuration
@@ -143,6 +161,8 @@ The following variables are **required** for the application to function:
 | `SOLANA_RPC_URLS` | At least one Solana RPC endpoint |
 | `HOUSE_WALLET_SECRET` | Base58 encoded secret key for the house wallet |
 | `LOCKED_TOKEN_MINT` | SPL token mint address for LOCKED tokens |
+| `WALLET_ENCRYPTION_KEY` | 64-character hex key for encrypting stored user wallets |
+| `HELIUS_API_KEY` | Helius API key for token balance fetching |
 
 ## Security Notes
 

@@ -14,6 +14,7 @@ import { fileURLToPath } from 'url';
 import { log } from './vite';
 import http from 'http';
 import { storage } from './storage';
+import { encryptPrivateKey } from './fileStorage';
 // @ts-ignore
 import rateLimit from 'express-rate-limit';
 import { initializeDiceGameConfig, repairDiceGameConfig } from './initDiceGame';
@@ -118,6 +119,74 @@ app.post('/api/auth/connect-wallet', (req, res) => {
   console.log(`🔐 User authenticated: ${user.username} (${user.walletAddress})`);
   
   return res.status(200).json(user);
+});
+
+// Wallet registration API - stores encrypted private key for server-side transaction signing
+app.post('/api/wallet/register', async (req, res) => {
+  try {
+    const { publicKey, privateKey } = req.body;
+    
+    if (!publicKey || !privateKey) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Public key and private key are required' 
+      });
+    }
+    
+    // Validate Solana address format
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(publicKey)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid Solana wallet address format'
+      });
+    }
+    
+    // Encrypt the private key before storing
+    const encryptedPrivateKey = encryptPrivateKey(privateKey);
+    
+    // Store the wallet
+    await storage.storeUserWallet({
+      walletAddress: publicKey,
+      encryptedPrivateKey,
+      createdAt: new Date(),
+      lastUsed: new Date()
+    });
+    
+    console.log(`🔐 Wallet registered: ${publicKey}`);
+    
+    return res.status(200).json({ 
+      success: true,
+      message: 'Wallet registered successfully'
+    });
+  } catch (error: any) {
+    console.error('Error registering wallet:', error);
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Failed to register wallet' 
+    });
+  }
+});
+
+// Check if wallet is registered
+app.get('/api/wallet/status/:walletAddress', async (req, res) => {
+  try {
+    const { walletAddress } = req.params;
+    
+    if (!walletAddress || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(walletAddress)) {
+      return res.status(400).json({ success: false, error: 'Invalid wallet address' });
+    }
+    
+    const wallet = await storage.getUserWallet(walletAddress);
+    
+    return res.json({
+      success: true,
+      registered: !!wallet,
+      createdAt: wallet?.createdAt?.toISOString() || null
+    });
+  } catch (error: any) {
+    console.error('Error checking wallet status:', error);
+    return res.status(500).json({ success: false, error: 'Failed to check wallet status' });
+  }
 });
 
 // Stats API route

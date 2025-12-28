@@ -1,0 +1,41 @@
+name: locked-room
+region: nyc
+services:
+  - name: web
+    github:
+      repo: AxsolTools/locked
+      branch: main
+      deploy_on_push: true
+    build_command: npm install && npm run build
+    run_command: npm start
+    environment_slug: node-js
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-1gb
+    http_port: 5000
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "5000"
+      - key: SOLANA_RPC_URLS
+        value: "https://api.mainnet-beta.solana.com"
+      - key: LOCKED_TOKEN_MINT
+        value: "B7tP6jNAcSmnvcuKsTFdvTAJHMkEQaXse8TMxoq2pump"
+      - key: LOCKED_TOKEN_SYMBOL
+        value: "NULL"
+      - key: TOKEN_DECIMALS
+        value: "9"
+      - key: HOUSE_WALLET_SECRET
+        type: SECRET
+        value: "REPLACE_WITH_YOUR_HOUSE_WALLET_SECRET"
+      - key: DICE_ENABLED
+        value: "true"
+      - key: HOUSE_EDGE
+        value: "1.5"
+      - key: MIN_BET_AMOUNT
+        value: "1"
+      - key: MAX_BET_AMOUNT
+        value: "10000"
+      - key: MAX_PROFIT
+        value: "5000"
+

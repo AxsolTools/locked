@@ -40,19 +40,59 @@ interface VestingSchedule {
   createdAt: string;
 }
 
-// In-memory vesting schedules (persisted to storage)
+import fs from 'fs';
+import path from 'path';
+
+// File path for persistent vesting storage
+const DATA_DIR = path.join(process.cwd(), 'data');
+const VESTING_FILE_PATH = path.join(DATA_DIR, 'vesting_schedules.json');
+
+// Ensure data directory exists
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+// In-memory vesting schedules (persisted to file)
 let vestingSchedules: Map<string, VestingSchedule> = new Map();
+
+/**
+ * Save vesting schedules to file
+ */
+function saveVestingSchedules(): void {
+  try {
+    const schedulesArray = Array.from(vestingSchedules.values());
+    fs.writeFileSync(VESTING_FILE_PATH, JSON.stringify(schedulesArray, null, 2));
+    console.log('[VESTING] Saved', schedulesArray.length, 'schedules to storage');
+  } catch (error) {
+    console.error('[VESTING] Error saving vesting schedules:', error);
+  }
+}
 
 /**
  * Load vesting schedules from storage on startup
  */
 export const loadVestingSchedules = async (): Promise<void> => {
   try {
-    // For now, we'll use a simple in-memory store
-    // In production, this would be persisted to the database
+    if (fs.existsSync(VESTING_FILE_PATH)) {
+      const fileData = fs.readFileSync(VESTING_FILE_PATH, 'utf8');
+      const parsedData = JSON.parse(fileData);
+      
+      vestingSchedules = new Map();
+      parsedData.forEach((schedule: VestingSchedule) => {
+        if (schedule && schedule.id) {
+          vestingSchedules.set(schedule.id, schedule);
+        }
+      });
+      
+      console.log('[VESTING] Loaded', vestingSchedules.size, 'vesting schedules from storage');
+    } else {
+      console.log('[VESTING] No saved vesting schedules found, starting fresh');
+      vestingSchedules = new Map();
+    }
     console.log('[VESTING] Vesting service initialized');
   } catch (error) {
     console.error('[VESTING] Error loading vesting schedules:', error);
+    vestingSchedules = new Map();
   }
 };
 
@@ -222,6 +262,9 @@ router.post('/create', async (req: Request, res: Response) => {
     };
 
     vestingSchedules.set(vestingSchedule.id, vestingSchedule);
+    
+    // Save to persistent storage
+    saveVestingSchedules();
 
     // Log the vesting creation
     console.log('[VESTING] Created vesting schedule:', vestingSchedule.id, 'for', walletAddress, 'duration:', seconds, 'seconds');
@@ -254,7 +297,7 @@ router.post('/create', async (req: Request, res: Response) => {
 
 /**
  * POST /api/vesting/claim
- * Claim vested tokens
+ * Claim vested tokens - transfers tokens back from house to user on-chain
  */
 router.post('/claim', async (req: Request, res: Response) => {
   const { walletAddress, vestingId, signedMessage, signature } = req.body;
@@ -302,10 +345,25 @@ router.post('/claim', async (req: Request, res: Response) => {
       });
     }
 
-    // Update user's balance
-    const currentBalance = await storage.getBalance(walletAddress);
-    const newBalance = currentBalance + claimableAmount;
-    await storage.setBalance(walletAddress, newBalance);
+    // Get the token mint from environment
+    const tokenMint = process.env.LOCKED_TOKEN_MINT;
+    if (!tokenMint) {
+      return res.status(500).json({ error: 'Token mint not configured' });
+    }
+
+    // Transfer tokens from house wallet back to user ON-CHAIN
+    const { transferToUser } = await import('../utils/transactionService');
+    const transferResult = await transferToUser(walletAddress, claimableAmount, tokenMint);
+    
+    if (!transferResult.success) {
+      console.error('[VESTING] Failed to transfer tokens back to user:', transferResult.error);
+      return res.status(500).json({ 
+        error: 'Failed to transfer tokens: ' + (transferResult.error || 'Transfer failed'),
+        details: transferResult.error
+      });
+    }
+
+    console.log('[VESTING] Tokens transferred back to user, tx:', transferResult.signature);
 
     // Update vesting schedule
     schedule.claimedAmount += claimableAmount;
@@ -316,15 +374,21 @@ router.post('/claim', async (req: Request, res: Response) => {
     }
 
     vestingSchedules.set(vestingId, schedule);
+    
+    // Save to persistent storage
+    saveVestingSchedules();
 
     console.log('[VESTING] Claimed', claimableAmount, 'tokens from', vestingId, 'for', walletAddress);
+
+    // Invalidate balance cache
+    invalidateCache(walletAddress);
 
     res.json({
       success: true,
       claimedAmount,
       totalClaimed: schedule.claimedAmount,
       remainingVested: schedule.amount - schedule.claimedAmount,
-      newBalance,
+      txSignature: transferResult.signature,
       status: schedule.status
     });
   } catch (error: any) {

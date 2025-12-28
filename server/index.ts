@@ -24,7 +24,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Load environment variables
-dotenv.config();
+// CRITICAL: Explicitly point to .env file in project root
+const envPath = path.resolve(process.cwd(), '.env');
+console.log('[ENV] Loading environment from:', envPath);
+dotenv.config({ path: envPath });
+console.log('[ENV] HOUSE_WALLET_SECRET loaded:', process.env.HOUSE_WALLET_SECRET ? 'YES (length: ' + process.env.HOUSE_WALLET_SECRET.length + ')' : 'NO');
 
 const app = express();
 const PORT = process.env.PORT || 5000;

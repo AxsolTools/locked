@@ -109,7 +109,7 @@ const LOCKBOT_KNOWLEDGE = {
   },
   
   marketInsights: {
-    xrpOutlook: "LOCKED continues to establish itself as a major cryptocurrency with strong utility for cross-border payments and broader financial applications.",
+    lockedOutlook: "LOCKED continues to establish itself as a major token with strong utility for token locking and broader DeFi applications on Solana.",
     tokenizationTrends: "The Solana blockchain is seeing increased adoption for tokenization of traditional assets, creating new opportunities for locking strategies.",
     regulatoryLandscape: "Regulatory clarity for LOCKED is improving globally, potentially opening the door to institutional adoption and increased utility.",
     investmentStrategies: "Token locking can be a powerful strategy during market volatility, helping you maintain your position and avoid emotional selling decisions.",
@@ -480,8 +480,8 @@ function generateResponse(query: string, walletAddress: string | null = null): s
   }
   
   // Market insights - LOCKED outlook
-  if (q.includes('xrp') && (q.includes('outlook') || q.includes('future') || q.includes('price'))) {
-    return LOCKBOT_KNOWLEDGE.marketInsights.xrpOutlook;
+  if (q.includes('locked') && (q.includes('outlook') || q.includes('future') || q.includes('price'))) {
+    return LOCKBOT_KNOWLEDGE.marketInsights.lockedOutlook;
   }
   
   // Market insights - Tokenization trends

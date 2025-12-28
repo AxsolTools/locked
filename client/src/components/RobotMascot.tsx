@@ -10,7 +10,7 @@ interface RobotMascotProps {
 const RobotMascot: React.FC<RobotMascotProps> = ({ 
   size = 'md', 
   withSpeechBubble = false,
-  speechText = "Securely lock your XRP tokens with our advanced Hook technology!",
+  speechText = "Securely lock your tokens on Solana with our advanced technology!",
   className = ""
 }) => {
   const sizeClasses = {

@@ -82,7 +82,7 @@ const Analytics = () => {
                 <Skeleton className="h-8 w-24" />
               ) : (
                 <div className="text-2xl font-bold text-primary">
-                  {statsData?.stats?.totalLockedTokens ? parseFloat(statsData.stats.totalLockedTokens).toLocaleString() : 0} XRP
+                  {statsData?.stats?.totalLockedTokens ? parseFloat(statsData.stats.totalLockedTokens).toLocaleString() : 0} LOCKED
                 </div>
               )}
             </CardContent>
@@ -240,7 +240,7 @@ const Analytics = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-primary">
-              0 XRP
+              0 LOCKED
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Lock tokens to see real-time analytics

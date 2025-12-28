@@ -218,7 +218,7 @@ const RoadmapPage = () => {
         >
           <Badge className="mb-2 bg-[#9945FF] text-white">Platform Roadmap</Badge>
           <h1 className="text-4xl md:text-5xl font-bold mb-6">
-            <span className="text-[#9945FF]">XRP</span>LOCKER <span className="text-[#9945FF]">ROOM</span> Vision
+            <span className="text-cyan-400">LOCKED</span> <span className="text-cyan-400">ROOM</span> Vision
           </h1>
           <p className="text-lg text-gray-300 max-w-3xl mx-auto mb-8">
             Our ambitious plan to revolutionize asset locking on the Solana blockchain with cutting-edge features

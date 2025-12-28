@@ -86,7 +86,7 @@ const Dashboard = () => {
         <div className="flex flex-col md:flex-row justify-between items-center">
           <div>
             <h1 className="text-2xl md:text-3xl font-outfit font-bold mb-2">
-              Welcome, {userData?.user?.username || 'XRP Hero'}!
+              Welcome, {userData?.user?.username || 'Solana User'}!
             </h1>
             <p className="text-muted-foreground">
               Manage your locked tokens and track your portfolio in real-time

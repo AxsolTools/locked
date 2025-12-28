@@ -7,7 +7,7 @@ interface LockBotProps {
 }
 
 const LockBot = ({ 
-  message = "Hey there, XRP hero! Need to lock your tokens for the future? I'm Lock-Bot, your guide to the XRPLOCKER ROOM! Let me help you secure your assets with style.", 
+  message = "Hey there! Need to lock your tokens for the future? I'm Lock-Bot, your guide to LOCKED ROOM! Let me help you secure your assets with style.", 
   size = 'md',
   withSpeechBubble = true
 }: LockBotProps) => {
@@ -28,9 +28,9 @@ const LockBot = ({
         >
           <div className="flex items-center space-x-2 mb-3">
             <div className="h-8 w-8 bg-primary rounded-full flex items-center justify-center">
-              <span className="text-white font-bold">XL</span>
+              <span className="text-white font-bold">LR</span>
             </div>
-            <p className="font-medium">Hey there, XRP hero!</p>
+            <p className="font-medium">Hey there!</p>
           </div>
           <p className="text-sm">{message}</p>
         </motion.div>

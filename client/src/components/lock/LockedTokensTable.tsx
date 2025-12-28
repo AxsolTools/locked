@@ -7,7 +7,7 @@ export default function LockedTokensTable() {
       <CardHeader>
         <CardTitle className="text-xl">Your Locked Tokens</CardTitle>
         <CardDescription>
-          Tokens you've locked on the XRP Ledger
+          Tokens you've locked on Solana
         </CardDescription>
       </CardHeader>
       <CardContent>

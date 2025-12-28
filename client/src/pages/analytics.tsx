@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useWallet } from "@/contexts/WalletContext";
+import { useSolanaWallet } from "@/contexts/SolanaWalletContext";
 import { format, subDays, subMonths } from "date-fns";
 import { 
   BarChart, 
@@ -33,12 +33,12 @@ import ConnectWalletPrompt from "@/components/wallet/ConnectWalletPrompt";
 const COLORS = ["hsl(267, 74%, 57%)", "hsl(174, 71%, 48%)", "hsl(24, 100%, 59%)", "hsl(262, 83%, 58%)"];
 
 const Analytics = () => {
-  const { wallet } = useWallet();
+  const { publicKey, isConnected } = useSolanaWallet();
   const [timeRange, setTimeRange] = useState("month");
   
   const { data: userData, isLoading: isUserLoading } = useQuery({
-    queryKey: wallet ? [`/api/user/profile?walletAddress=${wallet.walletAddress}`] : ['/api/user/profile'],
-    enabled: !!wallet,
+    queryKey: publicKey ? [`/api/user/profile?walletAddress=${publicKey}`] : ['/api/user/profile'],
+    enabled: isConnected,
   });
   
   interface StatsData {
@@ -54,7 +54,7 @@ const Analytics = () => {
   });
   
   // If not authenticated, show a simplified view with connection prompt
-  if (!wallet) {
+  if (!isConnected) {
     return (
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-8">
         {/* Page Header */}

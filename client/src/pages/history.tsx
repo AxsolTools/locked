@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useWallet } from "@/contexts/WalletContext";
+import { useSolanaWallet } from "@/contexts/SolanaWalletContext";
 import { format } from "date-fns";
 import { Lock, Unlock, Clock, Eye, Filter, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -35,13 +35,13 @@ interface Transaction {
 }
 
 const History = () => {
-  const { wallet } = useWallet();
+  const { publicKey, isConnected } = useSolanaWallet();
   const [filter, setFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
 
   const { data, isLoading } = useQuery<{ transactions: Transaction[] }>({
-    queryKey: wallet ? [`/api/transactions?userId=${wallet.id}`] : ['/api/transactions'],
-    enabled: !!wallet,
+    queryKey: publicKey ? [`/api/transactions?walletAddress=${publicKey}`] : ['/api/transactions'],
+    enabled: isConnected,
   });
 
   // Filter transactions based on type and search query
@@ -89,7 +89,7 @@ const History = () => {
               Transaction <span className="text-primary">History</span>
             </h1>
             <p className="text-muted-foreground">
-              View and track all your lock and unlock operations on the XRPL
+              View and track all your lock and unlock operations on Solana
             </p>
           </div>
           
@@ -102,7 +102,7 @@ const History = () => {
         </div>
       </section>
 
-      {wallet ? (
+      {isConnected ? (
         <>
           {/* Filters */}
           <div className="flex flex-col md:flex-row gap-4 justify-between">
@@ -183,7 +183,7 @@ const History = () => {
                             <div className="flex items-center space-x-2">
                               <span className="text-xs truncate max-w-[120px]">{tx.transactionHash || 'N/A'}</span>
                               {tx.transactionHash && (
-                                <a href={`https://xrpscan.com/tx/${tx.transactionHash}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:text-primary/80">
+                                <a href={`https://explorer.solana.com/tx/${tx.transactionHash}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:text-primary/80">
                                   <Eye className="h-4 w-4" />
                                 </a>
                               )}
@@ -232,7 +232,7 @@ const History = () => {
         <div className="bg-card rounded-xl p-6 shadow-xl comic-border">
           <ConnectWalletPrompt
             title="View Your Transaction History"
-            description="Connect your wallet to see your locking and unlocking transactions on the XRP Ledger."
+            description="Connect your wallet to see your locking and unlocking transactions on Solana."
             showMascot={true}
           />
         </div>

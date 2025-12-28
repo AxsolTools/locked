@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
-import { useWallet } from "@/contexts/WalletContext";
+import { useSolanaWallet } from "@/contexts/SolanaWalletContext";
 import { format } from "date-fns";
 import {
   Users,
@@ -115,7 +115,7 @@ interface SystemConfig {
 }
 
 const Admin = () => {
-  const { wallet } = useWallet();
+  const { publicKey, isConnected } = useSolanaWallet();
   const { toast } = useToast();
   const [userSearch, setUserSearch] = useState("");
   const [tokenSearch, setTokenSearch] = useState("");
@@ -126,7 +126,7 @@ const Admin = () => {
     minLockDuration: 1,
     maxLockDuration: 3650,
     hookVersion: "token_lock_v1",
-    hookNamespace: "xrpl_token_locker",
+    hookNamespace: "solana_token_locker",
     adminEmail: "",
     maintenanceMode: false
   });
@@ -146,9 +146,9 @@ const Admin = () => {
   });
   
   // CRITICAL SECURITY CHECK: Only allow the specific admin wallet to access this page
-  const ADMIN_WALLET_ADDRESS = "rURSqvhDp8iLNtHupUNi6BEicUkGRZ7ihJ";
+  const ADMIN_WALLET_ADDRESS = process.env.ADMIN_WALLET_ADDRESS || ""; // Set your admin wallet in .env
   // Hardcode this for development to match our wallet address in the wallet context
-  const isAdmin = wallet && wallet.walletAddress === ADMIN_WALLET_ADDRESS;
+  const isAdmin = isConnected && publicKey === ADMIN_WALLET_ADDRESS;
   
   // Use queries with safer defaults to prevent hooks order issues
   // These queries will run regardless of admin status, but we'll only show data if admin
@@ -159,7 +159,7 @@ const Admin = () => {
     retry: 2,
     enabled: !!isAdmin, // Convert to boolean
     queryFn: async () => {
-      const walletAddress = wallet?.walletAddress || ADMIN_WALLET_ADDRESS;
+      const walletAddress = publicKey || ADMIN_WALLET_ADDRESS;
       const url = `/api/admin/users?walletAddress=${encodeURIComponent(walletAddress)}`;
       
       const response = await fetch(url);
@@ -181,7 +181,7 @@ const Admin = () => {
     retry: 2,
     enabled: !!isAdmin, // Convert to boolean
     queryFn: async () => {
-      const walletAddress = wallet?.walletAddress || ADMIN_WALLET_ADDRESS;
+      const walletAddress = publicKey || ADMIN_WALLET_ADDRESS;
       const url = `/api/tokens/locked?walletAddress=${encodeURIComponent(walletAddress)}`;
       
       const response = await fetch(url);
@@ -203,7 +203,7 @@ const Admin = () => {
     retry: 2,
     enabled: !!isAdmin, // Convert to boolean
     queryFn: async () => {
-      const walletAddress = wallet?.walletAddress || ADMIN_WALLET_ADDRESS;
+      const walletAddress = publicKey || ADMIN_WALLET_ADDRESS;
       const url = `/api/stats?walletAddress=${encodeURIComponent(walletAddress)}`;
       
       const response = await fetch(url);
@@ -222,7 +222,7 @@ const Admin = () => {
     retry: 2,
     enabled: !!isAdmin, // Convert to boolean
     queryFn: async () => {
-      const walletAddress = wallet?.walletAddress || ADMIN_WALLET_ADDRESS;
+      const walletAddress = publicKey || ADMIN_WALLET_ADDRESS;
       const url = `/api/admin/config?walletAddress=${encodeURIComponent(walletAddress)}`;
       
       const response = await fetch(url);
@@ -242,7 +242,7 @@ const Admin = () => {
   const unlockMutation = useMutation({
     mutationFn: async (tokenId: number) => {
       // Use admin wallet address
-      const walletAddress = wallet?.walletAddress || ADMIN_WALLET_ADDRESS;
+      const walletAddress = publicKey || ADMIN_WALLET_ADDRESS;
       
       const response = await fetch(`/api/tokens/unlock/${tokenId}?walletAddress=${encodeURIComponent(walletAddress)}`, {
         method: "POST",
@@ -284,7 +284,7 @@ const Admin = () => {
   const updateConfigMutation = useMutation({
     mutationFn: async (configData: Partial<SystemConfig>) => {
       // Use admin wallet address
-      const walletAddress = wallet?.walletAddress || ADMIN_WALLET_ADDRESS;
+      const walletAddress = publicKey || ADMIN_WALLET_ADDRESS;
       
       // This is the correct endpoint path directly from the server code
       const response = await fetch(`/api/admin/config?walletAddress=${encodeURIComponent(walletAddress)}`, {
@@ -341,12 +341,12 @@ const Admin = () => {
         }, {} as Record<string, any>);
         
         // Add wallet address for authorization
-        cleanData.updatedBy = wallet?.walletAddress;
+        cleanData.updatedBy = publicKey;
         
         console.log("Submitting clean dice config data:", cleanData);
         
         // Include the wallet address in the URL only
-        const walletAddress = wallet?.walletAddress || ADMIN_WALLET_ADDRESS;
+        const walletAddress = publicKey || ADMIN_WALLET_ADDRESS;
         const url = `/api/admin/dice-config?walletAddress=${encodeURIComponent(walletAddress)}`;
         
         // Do NOT include x-wallet-address header since it's causing CORS issues
@@ -525,7 +525,7 @@ const Admin = () => {
   const [houseWalletSeed, setHouseWalletSeed] = useState("");
   const [isRegisteringWallet, setIsRegisteringWallet] = useState(false);
   const [isCheckingBalances, setIsCheckingBalances] = useState(false);
-  const [walletBalances, setWalletBalances] = useState<Array<{ role: string; address: string; xrpBalance: string }>>([]);
+  const [walletBalances, setWalletBalances] = useState<Array<{ role: string; address: string; solBalance: string }>>([]);
 
   // Add these functions after the existing mutation functions
   // Initialize wallet service
@@ -577,7 +577,7 @@ const Admin = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(wallet?.walletAddress ? { 'x-wallet-address': wallet.walletAddress } : {})
+          ...(publicKey ? { 'x-wallet-address': publicKey } : {})
         },
         body: JSON.stringify({
           role: 'house',
@@ -629,7 +629,7 @@ const Admin = () => {
         const formattedBalances = Object.entries(data).map(([address, details]: [string, any]) => ({
           role: details.role,
           address,
-          xrpBalance: details.balances?.find((b: any) => b.currency === 'XRP')?.value || '0',
+          solBalance: details.balances?.find((b: any) => b.currency === 'SOL')?.value || '0',
         }));
         
         setWalletBalances(formattedBalances);
@@ -743,7 +743,7 @@ const Admin = () => {
               <div className="text-2xl font-bold text-primary">
                 {statsData?.stats?.totalLockedTokens 
                   ? parseFloat(statsData.stats.totalLockedTokens).toLocaleString()
-                  : 0} XRP
+                  : 0}
               </div>
             )}
           </CardContent>
@@ -775,7 +775,7 @@ const Admin = () => {
               <div className="text-2xl font-bold text-accent">
                 {statsData?.stats?.totalFeeCollected
                   ? parseFloat(statsData.stats.totalFeeCollected).toLocaleString()
-                  : 0} XRP
+                  : 0}
               </div>
             )}
           </CardContent>
@@ -1116,7 +1116,7 @@ const Admin = () => {
                         />
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        XRPL address where fees will be sent
+                        Solana address where fees will be sent
                       </p>
                     </div>
                     
@@ -1131,7 +1131,7 @@ const Admin = () => {
                             feeAmount: e.target.value
                           })}
                         />
-                        <span>XRP</span>
+                        <span>tokens</span>
                       </div>
                       <p className="text-sm text-muted-foreground">
                         Fee charged for each token locking operation
@@ -1196,7 +1196,7 @@ const Admin = () => {
                       <div className="flex items-center space-x-2">
                         <Input 
                           type="text" 
-                          value={configForm.hookNamespace || "xrpl_token_locker"}
+                          value={configForm.hookNamespace || "solana_token_locker"}
                           onChange={(e) => setConfigForm({
                             ...configForm,
                             hookNamespace: e.target.value
@@ -1204,7 +1204,7 @@ const Admin = () => {
                         />
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        Hook namespace on XRPL
+                        Program namespace on Solana
                       </p>
                     </div>
                     
@@ -1330,7 +1330,7 @@ const Admin = () => {
                           placeholder="r..."
                         />
                         <p className="text-xs text-muted-foreground">
-                          XRP Ledger address that holds the tokens for bets
+                          Solana address that holds the tokens for bets
                         </p>
                       </div>
                       
@@ -1591,7 +1591,7 @@ const Admin = () => {
                         <TableRow>
                           <TableHead>Role</TableHead>
                           <TableHead>Address</TableHead>
-                          <TableHead>XRP Balance</TableHead>
+                          <TableHead>Balance</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1599,7 +1599,7 @@ const Admin = () => {
                           <TableRow key={index}>
                             <TableCell className="font-medium">{balance.role}</TableCell>
                             <TableCell>{balance.address}</TableCell>
-                            <TableCell>{balance.xrpBalance}</TableCell>
+                            <TableCell>{balance.solBalance}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>

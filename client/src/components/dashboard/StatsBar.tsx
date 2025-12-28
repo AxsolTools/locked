@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { DollarSign, Users, Calendar, Wallet } from 'lucide-react';
-import { useWallet } from '@/contexts/WalletContext';
+import { useSolanaWallet } from '@/contexts/SolanaWalletContext';
 
 // Stats card component
 const StatCard = ({ icon, title, value, description }: { 
@@ -25,7 +25,7 @@ const StatCard = ({ icon, title, value, description }: {
 
 // StatsBar component to show platform stats and wallet balance
 const StatsBar = () => {
-  const { balance, wallet } = useWallet();
+  const { userGameBalance, publicKey, isConnected, formatAddress } = useSolanaWallet();
   const [stats, setStats] = useState({
     totalLockedTokens: '0',
     activeLockers: 0,
@@ -84,14 +84,14 @@ const StatsBar = () => {
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <StatCard
         icon={<Wallet className="h-4 w-4" />}
-        title="Your Balance"
-        value={`${parseFloat(balance) > 0 ? formatNumber(balance) : 'Loading...'} XRP`}
-        description={wallet ? `${wallet.walletAddress.substring(0, 6)}...${wallet.walletAddress.substring(wallet.walletAddress.length - 4)}` : 'Connect wallet'}
+        title="Your Game Balance"
+        value={`${userGameBalance > 0 ? formatNumber(userGameBalance) : 'Loading...'}`}
+        description={isConnected && publicKey ? formatAddress(publicKey) : 'Connect wallet'}
       />
       <StatCard
         icon={<DollarSign className="h-4 w-4" />}
         title="Total Locked Value"
-        value={isLoading ? 'Loading...' : `${formatNumber(stats.totalLockedTokens)} XRP`}
+        value={isLoading ? 'Loading...' : `${formatNumber(stats.totalLockedTokens)}`}
       />
       <StatCard
         icon={<Users className="h-4 w-4" />}

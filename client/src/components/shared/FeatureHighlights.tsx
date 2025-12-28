@@ -4,7 +4,7 @@ const FeatureHighlights = () => {
   return (
     <section className="py-8">
       <h2 className="text-2xl md:text-3xl font-outfit font-bold text-center mb-10">
-        Supercharge Your <span className="text-primary">XRP</span> Assets
+        Supercharge Your <span className="text-primary">Solana</span> Assets
       </h2>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -24,7 +24,7 @@ const FeatureHighlights = () => {
           </div>
           <h3 className="text-xl font-outfit font-bold mb-2">Hook-Powered Security</h3>
           <p className="text-muted-foreground">
-            Our platform uses XRPL Hooks for unbreakable security. Your assets are protected by the same technology that powers the XRP Ledger.
+            Our platform uses Solana smart contracts for unbreakable security. Your assets are protected by the same technology that powers Solana.
           </p>
         </div>
         

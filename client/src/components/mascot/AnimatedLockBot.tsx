@@ -8,7 +8,7 @@ interface AnimatedLockBotProps {
 }
 
 const AnimatedLockBot = ({ 
-  message = "Hey there, XRP hero! Welcome to XRPLOCKER ROOM! I'm here to help you lock your XRP tokens securely using XRPL Hooks technology. Just connect your wallet to get started!",
+  message = "Hey there! Welcome to LOCKED ROOM! I'm here to help you lock your tokens securely on Solana. Just connect your wallet to get started!",
   size = 'md',
   withSpeechBubble = true
 }: AnimatedLockBotProps) => {
@@ -31,10 +31,10 @@ const AnimatedLockBot = ({
           onClick={handleBotClick}
         >
           <div className="flex items-center gap-2 mb-2">
-            <div className="h-6 w-6 bg-[#FF6B2C] rounded-full flex items-center justify-center">
-              <span className="text-white font-bold text-xs">XL</span>
+            <div className="h-6 w-6 bg-[#9945FF] rounded-full flex items-center justify-center">
+              <span className="text-white font-bold text-xs">LR</span>
             </div>
-            <p className="font-medium text-sm text-white">Hey there, XRP hero!</p>
+            <p className="font-medium text-sm text-white">Hey there!</p>
           </div>
           <p className="text-xs text-gray-400">{message}</p>
           

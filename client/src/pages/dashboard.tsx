@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useWallet } from "@/contexts/WalletContext";
+import { useSolanaWallet } from "@/contexts/SolanaWalletContext";
 import StatsBar from "@/components/shared/StatsBar";
 import ActivityFeed from "@/components/shared/ActivityFeed";
 import LockedTokensTable from "@/components/lock/LockedTokensTable";
@@ -8,7 +8,7 @@ import ConnectWalletPrompt from "@/components/wallet/ConnectWalletPrompt";
 import { Link } from "wouter";
 
 const Dashboard = () => {
-  const { wallet } = useWallet();
+  const { publicKey, isConnected, formatAddress } = useSolanaWallet();
 
   interface UserData {
     user: {
@@ -19,12 +19,12 @@ const Dashboard = () => {
   }
   
   const { data: userData } = useQuery<UserData>({
-    queryKey: wallet ? [`/api/user/profile?walletAddress=${wallet.walletAddress}`] : ['/api/user/profile'],
-    enabled: !!wallet,
+    queryKey: publicKey ? [`/api/user/profile?walletAddress=${publicKey}`] : ['/api/user/profile'],
+    enabled: isConnected,
   });
 
   // If not authenticated, show connect wallet prompt
-  if (!wallet) {
+  if (!isConnected) {
     return (
       <div className="max-w-7xl mx-auto p-4 md:p-6">
         <h1 className="text-3xl font-bold mb-6 text-center">Dashboard</h1>
@@ -96,7 +96,7 @@ const Dashboard = () => {
             <div className="bg-muted p-4 rounded-lg text-center">
               <p className="text-sm text-muted-foreground">Your Wallet</p>
               <p className="font-medium truncate max-w-[150px]">
-                {wallet?.walletAddress.substring(0, 6)}...{wallet?.walletAddress.substring(wallet.walletAddress.length - 4)}
+                {publicKey ? formatAddress(publicKey) : ''}
               </p>
             </div>
           </div>

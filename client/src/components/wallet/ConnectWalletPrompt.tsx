@@ -1,8 +1,8 @@
 import { useSolanaWallet } from '@/contexts/SolanaWalletContext';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Wallet as WalletIcon } from 'lucide-react';
 import RobotMascot from '@/components/RobotMascot';
-import WalletConnect from './WalletConnect';
+import { SolanaWalletGenerator } from './SolanaWalletGenerator';
 
 interface ConnectWalletPromptProps {
   title?: string;
@@ -50,10 +50,8 @@ const ConnectWalletPrompt = ({
             <li>Track your transactions</li>
           </ul>
         </div>
+        <SolanaWalletGenerator />
       </CardContent>
-      <CardFooter className="flex justify-center">
-        <WalletConnect />
-      </CardFooter>
     </Card>
   );
 };

@@ -29,7 +29,7 @@ router.post('/wallet/initialize', isAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Master password is required' });
     }
     
-    const initialized = await walletService.initialize(masterPassword);
+    const initialized = await walletService.initialize();
     
     if (initialized) {
       return res.json({ success: true, message: 'Wallet service initialized successfully' });

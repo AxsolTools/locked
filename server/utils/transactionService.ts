@@ -24,7 +24,9 @@ import {
   createAssociatedTokenAccountInstruction,
   getAccount,
   TOKEN_PROGRAM_ID,
-  TokenAccountNotFoundError
+  TOKEN_2022_PROGRAM_ID,
+  TokenAccountNotFoundError,
+  getMint
 } from '@solana/spl-token';
 import { storage } from '../storage';
 import { decryptPrivateKey } from '../fileStorage';
@@ -162,6 +164,22 @@ async function getUserKeypair(walletAddress: string): Promise<Keypair | null> {
 }
 
 /**
+ * Detect if a token uses Token-2022 or standard SPL Token program
+ */
+async function getTokenProgramId(connection: Connection, mint: PublicKey): Promise<PublicKey> {
+  try {
+    const mintInfo = await connection.getAccountInfo(mint);
+    if (mintInfo && mintInfo.owner.equals(TOKEN_2022_PROGRAM_ID)) {
+      console.log(`[TX] Token ${mint.toBase58()} uses Token-2022 program`);
+      return TOKEN_2022_PROGRAM_ID;
+    }
+  } catch (error) {
+    console.log(`[TX] Error detecting token program, defaulting to SPL Token:`, error);
+  }
+  return TOKEN_PROGRAM_ID;
+}
+
+/**
  * Ensure token account exists, create if not
  */
 async function ensureTokenAccount(
@@ -170,19 +188,29 @@ async function ensureTokenAccount(
   mint: PublicKey,
   owner: PublicKey
 ): Promise<{ address: PublicKey; instruction?: TransactionInstruction }> {
-  const tokenAccount = await getAssociatedTokenAddress(mint, owner);
+  // Detect which token program this mint uses
+  const tokenProgramId = await getTokenProgramId(connection, mint);
+  
+  // Get ATA with correct program
+  const tokenAccount = await getAssociatedTokenAddress(
+    mint, 
+    owner, 
+    false, // allowOwnerOffCurve
+    tokenProgramId
+  );
   
   try {
-    await getAccount(connection, tokenAccount);
+    await getAccount(connection, tokenAccount, 'confirmed', tokenProgramId);
     return { address: tokenAccount };
   } catch (error) {
     if (error instanceof TokenAccountNotFoundError) {
-      // Token account doesn't exist, create instruction
+      // Token account doesn't exist, create instruction with correct program
       const instruction = createAssociatedTokenAccountInstruction(
         payer.publicKey,
         tokenAccount,
         owner,
-        mint
+        mint,
+        tokenProgramId
       );
       return { address: tokenAccount, instruction };
     }
@@ -238,13 +266,18 @@ async function buildTransferTransaction(
 
   const sourceTokenAccount = sourceInfo.source;
   
-  // Add transfer instruction
+  // Detect token program for transfer instruction
+  const tokenProgramId = await getTokenProgramId(connection, tokenMint);
+  
+  // Add transfer instruction with correct program
   transaction.add(
     createTransferInstruction(
       sourceTokenAccount,
       destTokenAccount,
       fromKeypair.publicKey,
-      rawAmount
+      rawAmount,
+      [], // multiSigners
+      tokenProgramId
     )
   );
   

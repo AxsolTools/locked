@@ -150,6 +150,33 @@ export class WalletService {
   }
 
   /**
+   * Register a wallet (stub for admin routes compatibility)
+   */
+  async registerWallet(options: { role: WalletRole; address: string; seed: string; meta?: any }): Promise<boolean> {
+    // Wallet registration is handled via environment variables
+    // This is a stub for admin route compatibility
+    console.log(`Wallet registration requested for role: ${options.role}, address: ${options.address}`);
+    return true;
+  }
+
+  /**
+   * Check wallet balances (stub for admin routes compatibility)
+   */
+  async checkWalletBalances(): Promise<{ house: number; fee: number }> {
+    try {
+      const houseAddress = this.getHouseWalletAddress();
+      const houseBalance = houseAddress ? await this.getTokenBalance(houseAddress) : 0;
+      return {
+        house: houseBalance,
+        fee: 0 // Fee wallet balance not tracked separately
+      };
+    } catch (error) {
+      console.error('Error checking wallet balances:', error);
+      return { house: 0, fee: 0 };
+    }
+  }
+
+  /**
    * Clean up resources
    */
   async shutdown(): Promise<void> {

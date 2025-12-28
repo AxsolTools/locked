@@ -23,6 +23,7 @@ import {
   createTransferInstruction,
   getAccount,
   TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID
 } from '@solana/spl-token';
 import bs58 from 'bs58';
@@ -117,6 +118,21 @@ export const isHouseWalletInitialized = (): boolean => {
 };
 
 /**
+ * Detect if a token uses Token-2022 or standard SPL Token program
+ */
+const getTokenProgramId = async (connection: Connection, mint: PublicKey): Promise<PublicKey> => {
+  try {
+    const mintInfo = await connection.getAccountInfo(mint);
+    if (mintInfo && mintInfo.owner.equals(TOKEN_2022_PROGRAM_ID)) {
+      return TOKEN_2022_PROGRAM_ID;
+    }
+  } catch (error) {
+    console.log('[WALLET] Error detecting token program, defaulting to SPL Token');
+  }
+  return TOKEN_PROGRAM_ID;
+};
+
+/**
  * Get or create associated token account for a wallet
  */
 export const getOrCreateTokenAccount = async (
@@ -125,19 +141,21 @@ export const getOrCreateTokenAccount = async (
 ): Promise<PublicKey> => {
   const wallet = new PublicKey(walletAddress);
   const mint = getTokenMint();
+  const connection = getConnection();
+  
+  // Detect token program
+  const tokenProgramId = await getTokenProgramId(connection, mint);
   
   const associatedTokenAddress = await getAssociatedTokenAddress(
     mint,
     wallet,
     false,
-    TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID
+    tokenProgramId
   );
 
   if (createIfMissing) {
-    const connection = getConnection();
     try {
-      await getAccount(connection, associatedTokenAddress);
+      await getAccount(connection, associatedTokenAddress, 'confirmed', tokenProgramId);
     } catch {
       // Account doesn't exist, create it
       const house = getHouseWallet();
@@ -147,8 +165,7 @@ export const getOrCreateTokenAccount = async (
           associatedTokenAddress,
           wallet,
           mint,
-          TOKEN_PROGRAM_ID,
-          ASSOCIATED_TOKEN_PROGRAM_ID
+          tokenProgramId
         )
       );
 
@@ -201,12 +218,17 @@ export const transferTokensToUser = async (
     const connection = getConnection();
     const mint = getTokenMint();
 
-    // Get token accounts
-    const houseTokenAccount = await getAssociatedTokenAddress(mint, house.publicKey);
+    // Detect token program (Token-2022 vs SPL Token)
+    const tokenProgramId = await getTokenProgramId(connection, mint);
+    console.log('[WALLET] Using token program:', tokenProgramId.toBase58());
+
+    // Get token accounts with correct program
+    const houseTokenAccount = await getAssociatedTokenAddress(mint, house.publicKey, false, tokenProgramId);
     const userTokenAccount = await getOrCreateTokenAccount(userWalletAddress, true);
 
-    // Convert amount to smallest unit (assuming 9 decimals)
-    const amountInSmallestUnit = BigInt(Math.floor(amount * 1e9));
+    // Get decimals from environment
+    const decimals = parseInt(process.env.TOKEN_DECIMALS || '9', 10);
+    const amountInSmallestUnit = BigInt(Math.floor(amount * Math.pow(10, decimals)));
 
     // Build transaction
     const transaction = new Transaction();
@@ -218,7 +240,7 @@ export const transferTokensToUser = async (
       })
     );
 
-    // Add transfer instruction
+    // Add transfer instruction with correct program
     transaction.add(
       createTransferInstruction(
         houseTokenAccount,
@@ -226,7 +248,7 @@ export const transferTokensToUser = async (
         house.publicKey,
         amountInSmallestUnit,
         [],
-        TOKEN_PROGRAM_ID
+        tokenProgramId
       )
     );
 

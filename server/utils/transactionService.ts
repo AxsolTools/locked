@@ -45,6 +45,12 @@ interface TransferResult {
   attempts: number;
 }
 
+type ParsedTokenAccountInfo = {
+  pubkey: PublicKey;
+  rawAmount: bigint;
+  decimals: number;
+};
+
 /**
  * Get RPC connection with confirmed commitment
  */
@@ -75,6 +81,51 @@ function getTokenMint(): PublicKey | null {
  */
 function getTokenDecimals(): number {
   return parseInt(process.env.TOKEN_DECIMALS || '9', 10);
+}
+
+/**
+ * Find the best source token account for a given owner+mint.
+ * IMPORTANT: Do not assume the source is the ATA; wallets may hold funds in non-ATA accounts.
+ */
+async function findSourceTokenAccount(
+  connection: Connection,
+  owner: PublicKey,
+  mint: PublicKey,
+  requiredRawAmount: bigint,
+  fallbackDecimals: number
+): Promise<{ source: PublicKey; decimals: number } | null> {
+  const resp = await connection.getParsedTokenAccountsByOwner(owner, { mint });
+
+  const candidates: ParsedTokenAccountInfo[] = [];
+  for (const item of resp.value) {
+    const parsed = (item.account.data as any)?.parsed;
+    const tokenAmount = parsed?.info?.tokenAmount;
+    if (!tokenAmount?.amount) continue;
+
+    const rawAmount = BigInt(tokenAmount.amount);
+    const decimals = typeof tokenAmount.decimals === 'number' ? tokenAmount.decimals : fallbackDecimals;
+
+    candidates.push({
+      pubkey: item.pubkey,
+      rawAmount,
+      decimals
+    });
+  }
+
+  if (candidates.length === 0) return null;
+
+  // Prefer an account that can cover the amount. If multiple, choose the largest (reduces chance of dust/close issues).
+  const sufficient = candidates
+    .filter(c => c.rawAmount >= requiredRawAmount)
+    .sort((a, b) => (a.rawAmount > b.rawAmount ? -1 : a.rawAmount < b.rawAmount ? 1 : 0));
+
+  if (sufficient.length > 0) {
+    return { source: sufficient[0].pubkey, decimals: sufficient[0].decimals };
+  }
+
+  // No single account covers it (rare, but possible). We don't implement multi-account aggregation transfers here.
+  // Caller should fail with a clear error.
+  return null;
 }
 
 /**
@@ -167,14 +218,25 @@ async function buildTransferTransaction(
     transaction.add(createAccountInstr);
   }
   
-  // Get source token account
-  const sourceTokenAccount = await getAssociatedTokenAddress(
-    tokenMint, 
-    fromKeypair.publicKey
-  );
-  
   // Convert amount to raw units
   const rawAmount = BigInt(Math.floor(amount * Math.pow(10, decimals)));
+
+  // Pick a valid source token account (not necessarily the ATA)
+  const sourceInfo = await findSourceTokenAccount(
+    connection,
+    fromKeypair.publicKey,
+    tokenMint,
+    rawAmount,
+    decimals
+  );
+
+  if (!sourceInfo) {
+    throw new Error(
+      `No token account with sufficient balance found for owner=${fromKeypair.publicKey.toBase58()} mint=${tokenMint.toBase58()}`
+    );
+  }
+
+  const sourceTokenAccount = sourceInfo.source;
   
   // Add transfer instruction
   transaction.add(

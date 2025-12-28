@@ -3,7 +3,12 @@
   "version": "1.0.0",
   "type": "module",
   "license": "MIT",
+  "engines": {
+    "node": "20.x",
+    "npm": "10.x"
+  },
   "scripts": {
+    "heroku-prebuild": "npm install --legacy-peer-deps",
     "dev:api": "tsx --tsconfig tsconfig.json server/index.ts",
     "dev:frontend": "vite --port 5173 --strictPort",
     "dev": "concurrently \"npm run dev:api\" \"npm run dev:frontend\"",

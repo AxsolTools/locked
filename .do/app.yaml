@@ -6,8 +6,8 @@ services:
       repo: AxsolTools/locked
       branch: main
       deploy_on_push: true
-    build_command: npm install && npm run build
-    run_command: npm start
+    build_command: npm install --legacy-peer-deps && npm run build
+    run_command: node dist/index.js
     environment_slug: node-js
     instance_count: 1
     instance_size_slug: apps-s-1vcpu-1gb

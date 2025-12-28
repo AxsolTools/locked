@@ -129,7 +129,10 @@ export async function getTokenBalance(
   const cached = balanceCache.get(cacheKey);
   const tokenDecimals = decimals ?? getConfiguredTokenDecimals();
   
+  console.log(`[BALANCE] Fetching balance for wallet ${walletAddress}, mint ${tokenMint}, decimals ${tokenDecimals}`);
+  
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    console.log(`[BALANCE] Cache hit: ${cached.balance}`);
     return {
       mint: tokenMint,
       balance: cached.balance,
@@ -145,11 +148,14 @@ export async function getTokenBalance(
     
     // Get associated token account
     const tokenAccount = await getAssociatedTokenAddress(mintPubkey, walletPubkey);
+    console.log(`[BALANCE] Token account address: ${tokenAccount.toBase58()}`);
     
     try {
       const accountInfo = await getAccount(connection, tokenAccount);
       const rawBalance = accountInfo.amount.toString();
       const balance = Number(rawBalance) / Math.pow(10, tokenDecimals);
+      
+      console.log(`[BALANCE] Raw balance: ${rawBalance}, Calculated: ${balance}`);
       
       balanceCache.set(cacheKey, {
         balance,
@@ -165,8 +171,9 @@ export async function getTokenBalance(
         rawBalance,
         decimals: tokenDecimals
       };
-    } catch (error) {
+    } catch (error: any) {
       if (error instanceof TokenAccountNotFoundError) {
+        console.log(`[BALANCE] Token account not found for ${walletAddress} - balance is 0`);
         // Token account doesn't exist - balance is 0
         return {
           mint: tokenMint,
@@ -175,10 +182,11 @@ export async function getTokenBalance(
           decimals: tokenDecimals
         };
       }
+      console.error(`[BALANCE] Error getting account:`, error.message);
       throw error;
     }
-  } catch (error) {
-    console.error(`Error fetching token balance for ${walletAddress}:`, error);
+  } catch (error: any) {
+    console.error(`[BALANCE] Error fetching token balance for ${walletAddress}:`, error.message);
     return {
       mint: tokenMint,
       balance: 0,

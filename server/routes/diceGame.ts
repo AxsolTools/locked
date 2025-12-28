@@ -59,6 +59,10 @@ const userLastBetTime = new Map<string, number>();
 const userBetsPerMinute = new Map<string, { count: number; resetTime: number }>();
 const pendingBets = new Set<string>(); // Wallets with pending bets
 
+// House liquidity reservation (prevents over-committing funds for simultaneous bets)
+// Maps betId -> reserved payout amount
+const houseReservedLiquidity = new Map<string, number>();
+
 // Define interfaces
 interface Bet {
   id: string;
@@ -470,12 +474,20 @@ router.post('/bet', async (req, res) => {
     const cappedProfit = Math.min(potentialProfit, maxProfit);
 
     // Check if house has sufficient balance for potential payout
+    // INCLUDING already reserved liquidity for other pending bets
     const potentialPayout = betAmountNum + cappedProfit;
-    const houseHasFunds = await householdHasSufficientBalance(potentialPayout);
-    if (!houseHasFunds) {
+    const totalReserved = Array.from(houseReservedLiquidity.values()).reduce((sum, amt) => sum + amt, 0);
+    const houseBalance = await getHouseBalance();
+    const availableBalance = houseBalance - totalReserved;
+    
+    if (availableBalance < potentialPayout) {
       return res.status(503).json({ 
         error: 'House temporarily unable to cover this bet. Please try a smaller amount.',
-        code: 'HOUSE_INSUFFICIENT_FUNDS'
+        code: 'HOUSE_INSUFFICIENT_FUNDS',
+        houseBalance,
+        reservedLiquidity: totalReserved,
+        availableBalance,
+        required: potentialPayout
       });
     }
 
@@ -505,6 +517,10 @@ router.post('/bet', async (req, res) => {
 
     bets.set(betId, bet);
     saveBetsToFile();
+
+    // Reserve house liquidity for potential payout
+    houseReservedLiquidity.set(betId, potentialPayout);
+    logger.info(`Reserved ${potentialPayout} ${TOKEN_SYMBOL} for bet ${betId}. Total reserved: ${Array.from(houseReservedLiquidity.values()).reduce((sum, amt) => sum + amt, 0)}`);
 
     // Update rate limiting
     updateRateLimit(walletAddress);
@@ -654,8 +670,11 @@ router.post('/roll', async (req, res) => {
     bets.set(betId, bet);
     saveBetsToFile();
 
-    // Remove from pending bets
+    // Remove from pending bets and release reserved liquidity
     pendingBets.delete(walletAddress);
+    const releasedAmount = houseReservedLiquidity.get(betId) || 0;
+    houseReservedLiquidity.delete(betId);
+    logger.info(`Released ${releasedAmount} ${TOKEN_SYMBOL} reservation for bet ${betId}. Total reserved: ${Array.from(houseReservedLiquidity.values()).reduce((sum, amt) => sum + amt, 0)}`);
 
     // Invalidate balance cache for both parties
     invalidateCache(walletAddress);
@@ -698,9 +717,15 @@ router.post('/roll', async (req, res) => {
   } catch (error: any) {
     console.error('Error processing roll:', error);
     
-    // Clean up pending bet on error
-    if (req.body.walletAddress) {
-      pendingBets.delete(req.body.walletAddress);
+    // Clean up pending bet and reserved liquidity on error
+    const { betId, walletAddress } = req.body;
+    if (walletAddress) {
+      pendingBets.delete(walletAddress);
+    }
+    if (betId) {
+      const releasedAmount = houseReservedLiquidity.get(betId) || 0;
+      houseReservedLiquidity.delete(betId);
+      logger.info(`Released ${releasedAmount} ${TOKEN_SYMBOL} reservation (error cleanup) for bet ${betId}`);
     }
     
     res.status(500).json({ error: 'Internal server error' });

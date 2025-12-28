@@ -361,7 +361,25 @@ async function sendWithRetry(
         }
       );
       
-      console.log(`[TX] Transaction confirmed: ${signature}`);
+      console.log(`[TX] Transaction sent: ${signature}`);
+      
+      // Double-verify the transaction actually landed on-chain
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+      const txStatus = await connection.getSignatureStatus(signature);
+      
+      if (!txStatus.value) {
+        console.error(`[TX] Transaction ${signature} not found on-chain after confirmation!`);
+        lastError = new Error(`Transaction not found on-chain: ${signature}`);
+        continue; // Retry
+      }
+      
+      if (txStatus.value.err) {
+        console.error(`[TX] Transaction ${signature} failed on-chain:`, txStatus.value.err);
+        lastError = new Error(`Transaction failed on-chain: ${JSON.stringify(txStatus.value.err)}`);
+        continue; // Retry
+      }
+      
+      console.log(`[TX] Transaction VERIFIED on-chain: ${signature}, slot: ${txStatus.value.slot}`);
       
       return {
         success: true,

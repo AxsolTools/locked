@@ -84,6 +84,39 @@ export const deductFromBalance = async (walletAddress: string, amount: number): 
 };
 
 /**
+ * GET /api/balance/house/address
+ * Get the house wallet address for deposits
+ * NOTE: This route MUST be defined BEFORE /:walletAddress to avoid route parameter matching issues
+ */
+router.get('/house/address', async (req, res) => {
+  try {
+    if (!isWalletServiceReady()) {
+      return res.status(503).json({ 
+        success: false,
+        error: 'Wallet service not ready. House wallet may not be configured.',
+        houseWalletAddress: null,
+        tokenMint: process.env.LOCKED_TOKEN_MINT || 'Not configured'
+      });
+    }
+
+    const address = getHouseWalletAddress();
+    
+    res.json({
+      success: true,
+      houseWalletAddress: address,
+      tokenMint: process.env.LOCKED_TOKEN_MINT || 'Not configured'
+    });
+  } catch (error: any) {
+    console.error('[BALANCE] Error getting house address:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to get house address',
+      houseWalletAddress: null 
+    });
+  }
+});
+
+/**
  * GET /api/balance/:walletAddress
  * Get the balance for a wallet
  */
@@ -112,29 +145,6 @@ router.get('/:walletAddress', async (req, res) => {
   } catch (error: any) {
     console.error('[BALANCE] Error getting balance:', error);
     res.status(500).json({ error: 'Failed to get balance' });
-  }
-});
-
-/**
- * GET /api/balance/house/address
- * Get the house wallet address for deposits
- */
-router.get('/house/address', async (req, res) => {
-  try {
-    if (!isWalletServiceReady()) {
-      return res.status(503).json({ error: 'Wallet service not ready' });
-    }
-
-    const address = getHouseWalletAddress();
-    
-    res.json({
-      success: true,
-      houseWalletAddress: address,
-      tokenMint: process.env.LOCKED_TOKEN_MINT || 'Not configured'
-    });
-  } catch (error: any) {
-    console.error('[BALANCE] Error getting house address:', error);
-    res.status(500).json({ error: 'Failed to get house address' });
   }
 });
 

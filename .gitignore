@@ -3,8 +3,8 @@ node_modules/
 .pnp/
 .pnp.js
 
-# Environment files
-# Note: .env is now committed to support dynamic configuration
+# Environment files - NEVER COMMIT SECRETS
+.env
 .env.local
 .env.development.local
 .env.test.local

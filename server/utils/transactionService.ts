@@ -346,22 +346,25 @@ async function sendWithRetry(
   for (let i = 0; i < maxRetries; i++) {
     attempts++;
     try {
-      // Get recent blockhash
-      console.log(`[TX] Getting latest blockhash for attempt ${attempts}...`);
+      // Get recent blockhash - CRITICAL: Must get fresh blockhash for each attempt
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = signers[0].publicKey;
       
-      console.log(`[TX] Sending transaction attempt ${attempts}, feePayer: ${signers[0].publicKey.toBase58()}`);
-      console.log(`[TX] Transaction has ${transaction.instructions.length} instructions`);
+      // CRITICAL: Create a NEW transaction for each retry attempt
+      // Solana transactions cannot be reused after signing - they become immutable
+      const retryTransaction = new Transaction();
+      retryTransaction.recentBlockhash = blockhash;
+      retryTransaction.feePayer = signers[0].publicKey;
       
-      // Sign transaction
-      transaction.sign(...signers);
-      console.log(`[TX] Transaction signed by ${signers.length} signer(s)`);
+      // Copy all instructions from original transaction
+      for (const instruction of transaction.instructions) {
+        retryTransaction.add(instruction);
+      }
       
-      // Send transaction (don't wait for confirmation yet)
-      console.log(`[TX] Calling sendRawTransaction...`);
-      const signature = await connection.sendRawTransaction(transaction.serialize(), {
+      // Sign the new transaction
+      retryTransaction.sign(...signers);
+      
+      // Send transaction
+      const signature = await connection.sendRawTransaction(retryTransaction.serialize(), {
         skipPreflight: false,
         maxRetries: 3
       });

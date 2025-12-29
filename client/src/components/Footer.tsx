@@ -27,7 +27,7 @@ const Footer = () => {
           </p>
           
           <a 
-            href="https://x.com/LockedRoom" 
+            href="https://x.com/lockedroomSOL" 
             target="_blank" 
             rel="noopener noreferrer" 
             className="text-muted-foreground hover:text-secondary transition-colors p-2 rounded-full hover:bg-primary/10 flex items-center gap-2"

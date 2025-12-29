@@ -31,16 +31,16 @@ const roadmapPhases = [
   {
     id: "phase1",
     title: "Genesis Phase",
-    timeline: "Q3-Q4 2024",
-    status: "completed",
+    timeline: "Q4 2025",
+    status: "in-progress",
     description: "Platform launch and token distribution",
     achievements: [
       { text: "Launch of LOCKED platform", completed: true },
       { text: "LOCKED token issuance (1B supply)", completed: true },
       { text: "Basic locking mechanism implementation", completed: true },
-      { text: "Initial security audits", completed: true },
-      { text: "Token holder fee distribution system", completed: true },
-      { text: "Community building initiatives", completed: true },
+      { text: "Provably fair dice game launched", completed: true },
+      { text: "Token holder fee distribution system", completed: false },
+      { text: "Community building initiatives", completed: false },
     ],
     keyFeature: {
       title: "Automated Fee Distribution",
@@ -51,16 +51,16 @@ const roadmapPhases = [
   {
     id: "phase2",
     title: "Expansion Phase",
-    timeline: "Q1-Q4 2025",
-    status: "completed",
+    timeline: "Q1-Q2 2026",
+    status: "upcoming",
     description: "Enhanced functionality and ecosystem integration",
     achievements: [
-      { text: "Provably fair dice game launched", completed: true },
-      { text: "Advanced locking strategies with flexible conditions", completed: true },
-      { text: "Multi-signature lock controls", completed: true },
-      { text: "DEX integration for seamless token swaps", completed: true },
-      { text: "Mobile-responsive platform", completed: true },
-      { text: "Partnership with major Solana projects", completed: true },
+      { text: "Advanced locking strategies with flexible conditions", completed: false },
+      { text: "Multi-signature lock controls", completed: false },
+      { text: "DEX integration for seamless token swaps", completed: false },
+      { text: "Mobile app launch", completed: false },
+      { text: "Partnership with major Solana projects", completed: false },
+      { text: "Enhanced analytics dashboard", completed: false },
     ],
     keyFeature: {
       title: "Gaming & Yield Enhancement",
@@ -71,8 +71,8 @@ const roadmapPhases = [
   {
     id: "phase3",
     title: "Innovation Phase",
-    timeline: "Q1-Q2 2026",
-    status: "in-progress",
+    timeline: "Q3-Q4 2026",
+    status: "upcoming",
     description: "Cutting-edge Solana features integration",
     achievements: [
       { text: "Conditional escrow with oracle integration", completed: false },
@@ -91,7 +91,7 @@ const roadmapPhases = [
   {
     id: "phase4",
     title: "Enterprise Phase",
-    timeline: "Q3-Q4 2026",
+    timeline: "Q1-Q2 2027",
     status: "upcoming",
     description: "Scaling for institutional adoption",
     achievements: [
@@ -111,7 +111,7 @@ const roadmapPhases = [
   {
     id: "phase5",
     title: "Ecosystem Phase",
-    timeline: "Q1 2027 & Beyond",
+    timeline: "Q3 2027 & Beyond",
     status: "upcoming",
     description: "Complete financial ecosystem built on Solana",
     achievements: [

@@ -1,127 +1,47 @@
 /**
- * Vesting Routes - Server-side token vesting
+ * Vesting Routes - Streamflow Integration
  * 
- * This module handles all token vesting operations on the server side.
- * The actual vesting implementation is abstracted from the frontend.
+ * This module handles all token vesting operations using Streamflow's on-chain program.
+ * Tokens are locked in Streamflow's program-controlled accounts, not custodial wallets.
  * 
  * Important: All vesting contract interactions are handled server-side
  * to keep implementation details hidden from browser inspect elements.
  */
 
 import { Router, Request, Response } from 'express';
-import { PublicKey, Transaction, SystemProgram, Keypair, Connection } from '@solana/web3.js';
-import { 
-  getAssociatedTokenAddress, 
-  createAssociatedTokenAccountInstruction,
-  createTransferInstruction,
-  TOKEN_PROGRAM_ID,
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  getAccount
-} from '@solana/spl-token';
+import { PublicKey, Connection, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
-import { storage } from '../storage';
-import { getConnection, executeWithFailover } from '../utils/solanaClient';
-import { getHouseWallet, isWalletServiceReady } from '../utils/solanaWallet';
+import { getConnection } from '../utils/solanaClient';
+import { getHouseWallet } from '../utils/solanaWallet';
 import { getTokenBalance, invalidateCache } from '../utils/balanceService';
-import { transferFromUser } from '../utils/transactionService';
+import { 
+  StreamClient, 
+  getBN, 
+  ICreateStreamData,
+  ICluster,
+  Stream
+} from '@streamflow/stream';
 
 const router = Router();
 
-// Vesting schedule interface
-interface VestingSchedule {
-  id: string;
-  owner: string;
-  amount: number;
-  startTime: number;
-  endTime: number;
-  claimedAmount: number;
-  status: 'active' | 'completed' | 'cancelled';
-  createdAt: string;
-}
+// Initialize Streamflow client
+let streamflowClient: StreamClient | null = null;
 
-import fs from 'fs';
-import path from 'path';
-
-// File path for persistent vesting storage
-const DATA_DIR = path.join(process.cwd(), 'data');
-const VESTING_FILE_PATH = path.join(DATA_DIR, 'vesting_schedules.json');
-
-// Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-
-// In-memory vesting schedules (persisted to file)
-let vestingSchedules: Map<string, VestingSchedule> = new Map();
-
-/**
- * Save vesting schedules to file
- */
-function saveVestingSchedules(): void {
-  try {
-    const schedulesArray = Array.from(vestingSchedules.values());
-    fs.writeFileSync(VESTING_FILE_PATH, JSON.stringify(schedulesArray, null, 2));
-    console.log('[VESTING] Saved', schedulesArray.length, 'schedules to storage');
-  } catch (error) {
-    console.error('[VESTING] Error saving vesting schedules:', error);
+const getStreamflowClient = async (): Promise<StreamClient> => {
+  if (!streamflowClient) {
+    const connection = await getConnection();
+    const cluster: ICluster = process.env.SOLANA_NETWORK === 'mainnet-beta' ? 'mainnet' : 'devnet';
+    
+    streamflowClient = new StreamClient(
+      cluster,
+      undefined, // We'll pass the wallet per-transaction
+      {
+        commitment: 'confirmed',
+      }
+    );
   }
-}
-
-/**
- * Load vesting schedules from storage on startup
- */
-export const loadVestingSchedules = async (): Promise<void> => {
-  try {
-    if (fs.existsSync(VESTING_FILE_PATH)) {
-      const fileData = fs.readFileSync(VESTING_FILE_PATH, 'utf8');
-      const parsedData = JSON.parse(fileData);
-      
-      vestingSchedules = new Map();
-      parsedData.forEach((schedule: VestingSchedule) => {
-        if (schedule && schedule.id) {
-          vestingSchedules.set(schedule.id, schedule);
-        }
-      });
-      
-      console.log('[VESTING] Loaded', vestingSchedules.size, 'vesting schedules from storage');
-    } else {
-      console.log('[VESTING] No saved vesting schedules found, starting fresh');
-      vestingSchedules = new Map();
-    }
-    console.log('[VESTING] Vesting service initialized');
-  } catch (error) {
-    console.error('[VESTING] Error loading vesting schedules:', error);
-    vestingSchedules = new Map();
-  }
-};
-
-/**
- * Generate a unique vesting schedule ID
- */
-const generateVestingId = (): string => {
-  return `vest_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
-};
-
-/**
- * Calculate vested amount based on schedule
- */
-const calculateVestedAmount = (schedule: VestingSchedule): number => {
-  const now = Date.now();
-  
-  if (now < schedule.startTime) {
-    return 0;
-  }
-  
-  if (now >= schedule.endTime) {
-    return schedule.amount;
-  }
-  
-  const totalDuration = schedule.endTime - schedule.startTime;
-  const elapsed = now - schedule.startTime;
-  const vestedRatio = elapsed / totalDuration;
-  
-  return Math.floor(schedule.amount * vestedRatio * 100) / 100;
+  return streamflowClient;
 };
 
 /**
@@ -136,25 +56,50 @@ router.get('/schedules/:walletAddress', async (req: Request, res: Response) => {
   }
 
   try {
-    const userSchedules: VestingSchedule[] = [];
+    const client = await getStreamflowClient();
+    const connection = await getConnection();
     
-    vestingSchedules.forEach((schedule) => {
-      if (schedule.owner === walletAddress) {
-        // Calculate current vested amount
-        const vestedAmount = calculateVestedAmount(schedule);
-        const claimableAmount = vestedAmount - schedule.claimedAmount;
-        
-        userSchedules.push({
-          ...schedule,
-          vestedAmount,
-          claimableAmount
-        } as any);
+    // Get all streams for this wallet (as recipient)
+    const streams = await client.get({
+      wallet: new PublicKey(walletAddress),
+    });
+
+    const schedules = Object.entries(streams).map(([streamId, stream]: [string, any]) => {
+      const now = Date.now() / 1000; // Streamflow uses seconds
+      const startTime = stream.start * 1000; // Convert to milliseconds
+      const endTime = stream.end * 1000;
+      const totalAmount = stream.depositedAmount / Math.pow(10, stream.tokenDecimals);
+      const withdrawnAmount = stream.withdrawnAmount / Math.pow(10, stream.tokenDecimals);
+      
+      // Calculate vested amount
+      let vestedAmount = 0;
+      if (now >= stream.end) {
+        vestedAmount = totalAmount;
+      } else if (now > stream.start) {
+        const elapsed = now - stream.start;
+        const duration = stream.end - stream.start;
+        vestedAmount = (totalAmount * elapsed) / duration;
       }
+      
+      const claimableAmount = Math.max(0, vestedAmount - withdrawnAmount);
+
+      return {
+        id: streamId,
+        owner: stream.recipient,
+        amount: totalAmount,
+        startTime,
+        endTime,
+        claimedAmount: withdrawnAmount,
+        vestedAmount,
+        claimableAmount,
+        status: stream.canceledAt ? 'cancelled' : (withdrawnAmount >= totalAmount ? 'completed' : 'active'),
+        createdAt: new Date(startTime).toISOString(),
+      };
     });
 
     res.json({
       success: true,
-      schedules: userSchedules
+      schedules
     });
   } catch (error: any) {
     console.error('[VESTING] Error fetching schedules:', error);
@@ -164,14 +109,9 @@ router.get('/schedules/:walletAddress', async (req: Request, res: Response) => {
 
 /**
  * POST /api/vesting/create
- * Create a new vesting schedule
+ * Create a new vesting schedule using Streamflow
  * 
  * Duration is specified in SECONDS for maximum flexibility
- * Examples:
- *   - 60 seconds = 1 minute
- *   - 3600 seconds = 1 hour
- *   - 86400 seconds = 1 day
- *   - 2592000 seconds = 30 days
  */
 router.post('/create', async (req: Request, res: Response) => {
   const { 
@@ -179,8 +119,7 @@ router.post('/create', async (req: Request, res: Response) => {
     amount, 
     durationSeconds, 
     signedMessage, 
-    signature,
-    releaseCondition 
+    signature
   } = req.body;
 
   // Validate required fields
@@ -206,7 +145,7 @@ router.post('/create', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid amount' });
     }
 
-    // Validate duration in seconds (minimum 1 second, maximum ~10 years)
+    // Validate duration in seconds
     const seconds = parseInt(durationSeconds);
     const maxSeconds = 10 * 365 * 24 * 60 * 60; // ~10 years in seconds
     if (isNaN(seconds) || seconds < 1 || seconds > maxSeconds) {
@@ -217,12 +156,13 @@ router.post('/create', async (req: Request, res: Response) => {
 
     // Get the token mint from environment
     const tokenMint = process.env.LOCKED_TOKEN_MINT;
+    const tokenDecimals = parseInt(process.env.TOKEN_DECIMALS || '6');
     if (!tokenMint) {
       return res.status(500).json({ error: 'Token mint not configured' });
     }
 
-    // Check user's ON-CHAIN token balance (not internal game balance)
-    invalidateCache(walletAddress); // Ensure fresh balance
+    // Check user's ON-CHAIN token balance
+    invalidateCache(walletAddress);
     const tokenBalance = await getTokenBalance(walletAddress, tokenMint);
     
     console.log('[VESTING] User balance check:', walletAddress, 'has', tokenBalance.balance, 'needs', lockAmount);
@@ -235,69 +175,89 @@ router.post('/create', async (req: Request, res: Response) => {
       });
     }
 
-    // Transfer tokens from user to house wallet (lock them)
-    const transferResult = await transferFromUser(walletAddress, lockAmount, tokenMint);
+    // Get user's keypair from storage (they registered it earlier)
+    const { getStoredWallet } = await import('../utils/walletService');
+    const userKeypair = await getStoredWallet(walletAddress);
     
-    if (!transferResult.success) {
-      console.error('[VESTING] Token transfer failed:', transferResult.error);
-      return res.status(500).json({ 
-        error: 'Failed to lock tokens: ' + (transferResult.error || 'Transfer failed'),
-        details: transferResult.error
+    if (!userKeypair) {
+      return res.status(400).json({ 
+        error: 'Wallet not registered. Please reconnect your wallet.' 
       });
     }
-    
-    console.log('[VESTING] Tokens transferred to house wallet, tx:', transferResult.signature);
 
-    // Create vesting schedule
-    const now = Date.now();
-    const vestingSchedule: VestingSchedule = {
-      id: generateVestingId(),
-      owner: walletAddress,
-      amount: lockAmount,
-      startTime: now,
-      endTime: now + (seconds * 1000), // Convert seconds to milliseconds
-      claimedAmount: 0,
-      status: 'active',
-      createdAt: new Date().toISOString()
+    // Initialize Streamflow client
+    const client = await getStreamflowClient();
+    const connection = await getConnection();
+    
+    const now = Math.floor(Date.now() / 1000); // Current time in seconds
+    const endTime = now + seconds;
+
+    // Create stream data
+    const createStreamParams: ICreateStreamData = {
+      recipient: new PublicKey(walletAddress), // User is the recipient
+      tokenId: new PublicKey(tokenMint),
+      start: now,
+      amount: getBN(lockAmount, tokenDecimals), // Convert to base units
+      period: 1, // Continuous vesting (1 second intervals)
+      cliff: 0, // No cliff
+      cliffAmount: getBN(0, tokenDecimals),
+      amountPerPeriod: getBN(lockAmount / seconds, tokenDecimals), // Linear vesting
+      name: `Lock ${lockAmount}`,
+      canTopup: false,
+      cancelableBySender: false, // Cannot be cancelled
+      cancelableByRecipient: false,
+      transferableBySender: false,
+      transferableByRecipient: false,
+      automaticWithdrawal: false,
+      withdrawalFrequency: 0,
+      partner: undefined,
     };
 
-    vestingSchedules.set(vestingSchedule.id, vestingSchedule);
-    
-    // Save to persistent storage
-    saveVestingSchedules();
+    console.log('[VESTING] Creating Streamflow stream for', walletAddress, 'amount:', lockAmount, 'duration:', seconds, 'seconds');
 
-    // Log the vesting creation
-    console.log('[VESTING] Created vesting schedule:', vestingSchedule.id, 'for', walletAddress, 'duration:', seconds, 'seconds');
+    // Create the stream (this locks the tokens on-chain)
+    const { ixs, tx, metadata } = await client.create(
+      createStreamParams,
+      {
+        sender: userKeypair, // User signs and pays
+      }
+    );
 
-    // Get updated balance after lock
+    console.log('[VESTING] Stream created successfully, ID:', metadata.id);
+    console.log('[VESTING] Transaction signature:', tx);
+
+    // Invalidate cache
     invalidateCache(walletAddress);
     const updatedBalance = await getTokenBalance(walletAddress, tokenMint);
 
     res.json({
       success: true,
-      vestingId: vestingSchedule.id,
-      signature: transferResult.signature,
-      txSignature: transferResult.signature,
-      message: 'Vesting schedule created successfully',
+      vestingId: metadata.id,
+      signature: tx,
+      txSignature: tx,
+      message: 'Tokens locked successfully',
       schedule: {
-        id: vestingSchedule.id,
-        amount: vestingSchedule.amount,
-        startTime: vestingSchedule.startTime,
-        endTime: vestingSchedule.endTime,
+        id: metadata.id,
+        amount: lockAmount,
+        startTime: now * 1000,
+        endTime: endTime * 1000,
         durationSeconds: seconds,
-        releaseDate: new Date(vestingSchedule.endTime).toISOString()
+        releaseDate: new Date(endTime * 1000).toISOString()
       },
       newBalance: updatedBalance.balance
     });
   } catch (error: any) {
     console.error('[VESTING] Error creating vesting schedule:', error);
-    res.status(500).json({ error: 'Failed to create vesting schedule' });
+    res.status(500).json({ 
+      error: 'Failed to create vesting schedule',
+      details: error.message 
+    });
   }
 });
 
 /**
  * POST /api/vesting/claim
- * Claim vested tokens - transfers tokens back from house to user on-chain
+ * Claim vested tokens from Streamflow
  */
 router.post('/claim', async (req: Request, res: Response) => {
   const { walletAddress, vestingId, signedMessage, signature } = req.body;
@@ -318,82 +278,92 @@ router.post('/claim', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Invalid signature' });
     }
 
-    // Find the vesting schedule
-    const schedule = vestingSchedules.get(vestingId);
-    if (!schedule) {
+    // Get user's keypair from storage
+    const { getStoredWallet } = await import('../utils/walletService');
+    const userKeypair = await getStoredWallet(walletAddress);
+    
+    if (!userKeypair) {
+      return res.status(400).json({ 
+        error: 'Wallet not registered. Please reconnect your wallet.' 
+      });
+    }
+
+    // Initialize Streamflow client
+    const client = await getStreamflowClient();
+    
+    // Get stream details
+    const stream = await client.getOne({ id: vestingId });
+    
+    if (!stream) {
       return res.status(404).json({ error: 'Vesting schedule not found' });
     }
 
     // Verify ownership
-    if (schedule.owner !== walletAddress) {
+    if (stream.recipient !== walletAddress) {
       return res.status(403).json({ error: 'You do not own this vesting schedule' });
     }
 
-    // Check if already completed
-    if (schedule.status === 'completed') {
-      return res.status(400).json({ error: 'Vesting schedule already completed' });
-    }
-
+    const tokenDecimals = stream.tokenDecimals || 6;
+    const now = Date.now() / 1000;
+    
     // Calculate claimable amount
-    const vestedAmount = calculateVestedAmount(schedule);
-    const claimableAmount = vestedAmount - schedule.claimedAmount;
+    let vestedAmount = 0;
+    if (now >= stream.end) {
+      vestedAmount = stream.depositedAmount;
+    } else if (now > stream.start) {
+      const elapsed = now - stream.start;
+      const duration = stream.end - stream.start;
+      vestedAmount = Math.floor((stream.depositedAmount * elapsed) / duration);
+    }
+    
+    const claimableAmount = vestedAmount - stream.withdrawnAmount;
 
     if (claimableAmount <= 0) {
       return res.status(400).json({ 
         error: 'No tokens available to claim',
-        nextUnlockTime: schedule.endTime
+        nextUnlockTime: stream.end * 1000
       });
     }
 
-    // Get the token mint from environment
-    const tokenMint = process.env.LOCKED_TOKEN_MINT;
-    if (!tokenMint) {
-      return res.status(500).json({ error: 'Token mint not configured' });
-    }
+    console.log('[VESTING] Withdrawing', claimableAmount / Math.pow(10, tokenDecimals), 'tokens from stream', vestingId);
 
-    // Transfer tokens from house wallet back to user ON-CHAIN
-    const { transferToUser } = await import('../utils/transactionService');
-    const transferResult = await transferToUser(walletAddress, claimableAmount, tokenMint);
-    
-    if (!transferResult.success) {
-      console.error('[VESTING] Failed to transfer tokens back to user:', transferResult.error);
-      return res.status(500).json({ 
-        error: 'Failed to transfer tokens: ' + (transferResult.error || 'Transfer failed'),
-        details: transferResult.error
-      });
-    }
+    // Withdraw from stream
+    const { ixs, tx } = await client.withdraw(
+      {
+        id: vestingId,
+        amount: getBN(claimableAmount / Math.pow(10, tokenDecimals), tokenDecimals),
+      },
+      {
+        invoker: userKeypair, // User signs the withdrawal
+      }
+    );
 
-    console.log('[VESTING] Tokens transferred back to user, tx:', transferResult.signature);
-
-    // Update vesting schedule
-    schedule.claimedAmount += claimableAmount;
-    
-    // Mark as completed if fully vested
-    if (schedule.claimedAmount >= schedule.amount) {
-      schedule.status = 'completed';
-    }
-
-    vestingSchedules.set(vestingId, schedule);
-    
-    // Save to persistent storage
-    saveVestingSchedules();
-
-    console.log('[VESTING] Claimed', claimableAmount, 'tokens from', vestingId, 'for', walletAddress);
+    console.log('[VESTING] Withdrawal successful, tx:', tx);
 
     // Invalidate balance cache
-    invalidateCache(walletAddress);
+    const tokenMint = process.env.LOCKED_TOKEN_MINT;
+    if (tokenMint) {
+      invalidateCache(walletAddress);
+    }
+
+    const claimedAmountUI = claimableAmount / Math.pow(10, tokenDecimals);
+    const totalWithdrawnUI = (stream.withdrawnAmount + claimableAmount) / Math.pow(10, tokenDecimals);
+    const totalAmountUI = stream.depositedAmount / Math.pow(10, tokenDecimals);
 
     res.json({
       success: true,
-      claimedAmount,
-      totalClaimed: schedule.claimedAmount,
-      remainingVested: schedule.amount - schedule.claimedAmount,
-      txSignature: transferResult.signature,
-      status: schedule.status
+      claimedAmount: claimedAmountUI,
+      totalClaimed: totalWithdrawnUI,
+      remainingVested: totalAmountUI - totalWithdrawnUI,
+      txSignature: tx,
+      status: totalWithdrawnUI >= totalAmountUI ? 'completed' : 'active'
     });
   } catch (error: any) {
     console.error('[VESTING] Error claiming vested tokens:', error);
-    res.status(500).json({ error: 'Failed to claim vested tokens' });
+    res.status(500).json({ 
+      error: 'Failed to claim vested tokens',
+      details: error.message 
+    });
   }
 });
 
@@ -405,22 +375,44 @@ router.get('/schedule/:vestingId', async (req: Request, res: Response) => {
   const { vestingId } = req.params;
 
   try {
-    const schedule = vestingSchedules.get(vestingId);
+    const client = await getStreamflowClient();
+    const stream = await client.getOne({ id: vestingId });
     
-    if (!schedule) {
+    if (!stream) {
       return res.status(404).json({ error: 'Vesting schedule not found' });
     }
 
-    const vestedAmount = calculateVestedAmount(schedule);
-    const claimableAmount = vestedAmount - schedule.claimedAmount;
+    const tokenDecimals = stream.tokenDecimals || 6;
+    const now = Date.now() / 1000;
+    const totalAmount = stream.depositedAmount / Math.pow(10, tokenDecimals);
+    const withdrawnAmount = stream.withdrawnAmount / Math.pow(10, tokenDecimals);
+    
+    // Calculate vested amount
+    let vestedAmount = 0;
+    if (now >= stream.end) {
+      vestedAmount = totalAmount;
+    } else if (now > stream.start) {
+      const elapsed = now - stream.start;
+      const duration = stream.end - stream.start;
+      vestedAmount = (totalAmount * elapsed) / duration;
+    }
+    
+    const claimableAmount = Math.max(0, vestedAmount - withdrawnAmount);
 
     res.json({
       success: true,
       schedule: {
-        ...schedule,
+        id: vestingId,
+        owner: stream.recipient,
+        amount: totalAmount,
+        startTime: stream.start * 1000,
+        endTime: stream.end * 1000,
+        claimedAmount: withdrawnAmount,
         vestedAmount,
         claimableAmount,
-        progress: (vestedAmount / schedule.amount) * 100
+        progress: (vestedAmount / totalAmount) * 100,
+        status: stream.canceledAt ? 'cancelled' : (withdrawnAmount >= totalAmount ? 'completed' : 'active'),
+        createdAt: new Date(stream.start * 1000).toISOString(),
       }
     });
   } catch (error: any) {
@@ -435,30 +427,17 @@ router.get('/schedule/:vestingId', async (req: Request, res: Response) => {
  */
 router.get('/stats', async (_req: Request, res: Response) => {
   try {
-    let totalLocked = 0;
-    let totalVested = 0;
-    let activeSchedules = 0;
-    let completedSchedules = 0;
-
-    vestingSchedules.forEach((schedule) => {
-      totalLocked += schedule.amount;
-      totalVested += calculateVestedAmount(schedule);
-      
-      if (schedule.status === 'active') {
-        activeSchedules++;
-      } else if (schedule.status === 'completed') {
-        completedSchedules++;
-      }
-    });
-
+    // Note: Streamflow doesn't have a global stats endpoint
+    // We'd need to aggregate across all known users
+    // For now, return basic stats
     res.json({
       success: true,
       stats: {
-        totalLocked,
-        totalVested,
-        activeSchedules,
-        completedSchedules,
-        totalSchedules: vestingSchedules.size
+        totalLocked: 0,
+        totalVested: 0,
+        activeSchedules: 0,
+        completedSchedules: 0,
+        totalSchedules: 0
       }
     });
   } catch (error: any) {
@@ -467,5 +446,9 @@ router.get('/stats', async (_req: Request, res: Response) => {
   }
 });
 
-export default router;
+// No need for loadVestingSchedules - Streamflow stores everything on-chain
+export const loadVestingSchedules = async (): Promise<void> => {
+  console.log('[VESTING] Using Streamflow on-chain vesting - no local storage needed');
+};
 
+export default router;

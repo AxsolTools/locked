@@ -251,8 +251,8 @@ router.post('/create', async (req: Request, res: Response) => {
     
     if (feeWalletAddress) {
       try {
-        const { getStoredWallet } = await import('../utils/walletService');
-        const userKeypair = await getStoredWallet(walletAddress);
+        const { getUserKeypair } = await import('../utils/transactionService');
+        const userKeypair = await getUserKeypair(walletAddress);
         
         if (userKeypair) {
           const feeAmount = 0.01 * LAMPORTS_PER_SOL; // 0.01 SOL

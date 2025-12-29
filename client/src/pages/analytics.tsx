@@ -52,6 +52,35 @@ const Analytics = () => {
   const { data: statsData, isLoading: isStatsLoading } = useQuery<StatsData>({
     queryKey: ['/api/stats'],
   });
+
+  // Fetch user's vesting schedules
+  const { data: vestingData } = useQuery<{ success: boolean; schedules: any[] }>({
+    queryKey: [`/api/vesting/schedules/${publicKey}`],
+    enabled: isConnected && !!publicKey,
+    refetchInterval: 30000,
+  });
+
+  const { data: tokenConfig } = useQuery<{ decimals: number; symbol: string }>({
+    queryKey: ['/api/token/config'],
+  });
+
+  // Calculate user stats from vesting schedules
+  const userSchedules = vestingData?.schedules || [];
+  const totalLocked = userSchedules.reduce((sum, s) => sum + (s.amount - s.claimedAmount), 0);
+  const activeLocks = userSchedules.filter(s => {
+    const endTime = s.startTime + s.duration;
+    return Date.now() < endTime * 1000 && s.claimedAmount < s.amount;
+  }).length;
+  const avgDuration = userSchedules.length > 0
+    ? userSchedules.reduce((sum, s) => sum + s.duration, 0) / userSchedules.length
+    : 0;
+
+  const formatAmount = (amount: number) => {
+    const decimals = tokenConfig?.decimals || 6;
+    return (amount / Math.pow(10, decimals)).toLocaleString(undefined, {
+      maximumFractionDigits: 2,
+    });
+  };
   
   // If not authenticated, show a simplified view with connection prompt
   if (!isConnected) {
@@ -240,10 +269,10 @@ const Analytics = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-primary">
-              0 LOCKED
+              {formatAmount(totalLocked)} {tokenConfig?.symbol || 'TOKENS'}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Lock tokens to see real-time analytics
+              {userSchedules.length > 0 ? 'Total locked tokens' : 'Lock tokens to see real-time analytics'}
             </p>
           </CardContent>
         </Card>
@@ -254,10 +283,10 @@ const Analytics = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-secondary">
-              0
+              {activeLocks}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              No active locks yet
+              {activeLocks > 0 ? 'Currently locked' : 'No active locks yet'}
             </p>
           </CardContent>
         </Card>
@@ -268,10 +297,10 @@ const Analytics = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-accent">
-              0 Months
+              {avgDuration > 0 ? Math.round(avgDuration / 86400 * 10) / 10 : 0} Days
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              No lock history yet
+              {userSchedules.length > 0 ? 'Average across all locks' : 'No lock history yet'}
             </p>
           </CardContent>
         </Card>

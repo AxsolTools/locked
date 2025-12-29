@@ -9,7 +9,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { PublicKey, Connection, Keypair } from '@solana/web3.js';
+import { PublicKey, Connection, Keypair, SystemProgram, Transaction, LAMPORTS_PER_SOL, sendAndConfirmTransaction } from '@solana/web3.js';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { getConnection } from '../utils/solanaClient';
@@ -175,6 +175,22 @@ router.post('/create', async (req: Request, res: Response) => {
       });
     }
 
+    // Check user has enough SOL for fee (0.01 SOL) + rent (~0.002 SOL)
+    const connection = await getConnection();
+    const userPubkey = new PublicKey(walletAddress);
+    const solBalance = await connection.getBalance(userPubkey);
+    const requiredSol = 0.012 * LAMPORTS_PER_SOL; // 0.01 fee + 0.002 rent buffer
+    
+    console.log('[VESTING] SOL balance check:', walletAddress, 'has', solBalance / LAMPORTS_PER_SOL, 'SOL, needs ~0.012 SOL');
+    
+    if (solBalance < requiredSol) {
+      return res.status(400).json({ 
+        error: 'Insufficient SOL for lock fee',
+        required: '0.012 SOL',
+        available: (solBalance / LAMPORTS_PER_SOL).toFixed(4) + ' SOL'
+      });
+    }
+
     // Get user's keypair from storage (they registered it earlier)
     const { getStoredWallet } = await import('../utils/walletService');
     const userKeypair = await getStoredWallet(walletAddress);
@@ -187,7 +203,6 @@ router.post('/create', async (req: Request, res: Response) => {
 
     // Initialize Streamflow client
     const client = await getStreamflowClient();
-    const connection = await getConnection();
     
     const now = Math.floor(Date.now() / 1000); // Current time in seconds
     const endTime = now + seconds;
@@ -226,6 +241,51 @@ router.post('/create', async (req: Request, res: Response) => {
     console.log('[VESTING] Stream created successfully, ID:', metadata.id);
     console.log('[VESTING] Transaction signature:', tx);
 
+    // Lock successful - now charge 0.01 SOL fee to FEE_WALLET_ADDRESS
+    const feeWalletAddress = process.env.FEE_WALLET_ADDRESS;
+    let feeSignature = null;
+    
+    if (feeWalletAddress) {
+      try {
+        const feeAmount = 0.01 * LAMPORTS_PER_SOL; // 0.01 SOL
+        const feeWalletPubkey = new PublicKey(feeWalletAddress);
+        
+        const feeTransaction = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: userPubkey,
+            toPubkey: feeWalletPubkey,
+            lamports: feeAmount,
+          })
+        );
+        
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+        feeTransaction.recentBlockhash = blockhash;
+        feeTransaction.feePayer = userPubkey;
+        
+        // Sign with user's keypair
+        feeTransaction.sign(userKeypair);
+        
+        // Send fee transaction
+        feeSignature = await connection.sendRawTransaction(feeTransaction.serialize(), {
+          skipPreflight: false,
+          maxRetries: 3,
+        });
+        
+        await connection.confirmTransaction({
+          signature: feeSignature,
+          blockhash,
+          lastValidBlockHeight,
+        }, 'confirmed');
+        
+        console.log('[VESTING] Lock fee (0.01 SOL) charged successfully, tx:', feeSignature);
+      } catch (feeError: any) {
+        console.error('[VESTING] Failed to charge lock fee (non-critical):', feeError.message);
+        // Don't fail the entire operation - lock was successful
+      }
+    } else {
+      console.warn('[VESTING] FEE_WALLET_ADDRESS not configured - skipping fee');
+    }
+
     // Invalidate cache
     invalidateCache(walletAddress);
     const updatedBalance = await getTokenBalance(walletAddress, tokenMint);
@@ -235,6 +295,7 @@ router.post('/create', async (req: Request, res: Response) => {
       vestingId: metadata.id,
       signature: tx,
       txSignature: tx,
+      feeSignature,
       message: 'Tokens locked successfully',
       schedule: {
         id: metadata.id,

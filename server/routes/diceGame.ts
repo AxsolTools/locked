@@ -640,11 +640,40 @@ router.post('/roll', async (req, res) => {
     const betAmountNum = parseFloat(bet.amount);
 
     if (won) {
-      // User won - transfer from house to user
-      const rawProfit = calculateProfit(betAmountNum, bet.multiplier) - betAmountNum;
+      // User won - calculate profit
+      // CRITICAL FIX: Recalculate multiplier to ensure house edge is applied correctly
+      // Don't trust stored multiplier - recalculate from bet parameters
+      const winChance = bet.isOver ? (999999.99 - bet.target) / 999999.99 * 100 : bet.target / 999999.99 * 100;
+      const houseEdge = parseFloat(process.env.HOUSE_EDGE || "1.5");
+      
+      // Recalculate multiplier with house edge to prevent manipulation
+      const verifiedMultiplier = applyHouseEdge(winChance, houseEdge);
+      
+      // CRITICAL: Verify stored multiplier matches calculated multiplier (within 0.01 tolerance for rounding)
+      const multiplierDiff = Math.abs(bet.multiplier - verifiedMultiplier);
+      if (multiplierDiff > 0.01) {
+        logger.error(`[ROLL] CRITICAL: Multiplier mismatch! Stored: ${bet.multiplier}, Verified: ${verifiedMultiplier}, Diff: ${multiplierDiff}`);
+        logger.error(`[ROLL] Possible exploit attempt! Using verified multiplier for safety.`);
+      }
+      
+      // Use the verified multiplier (with house edge) to prevent exploits
+      // Ensure multiplier is reasonable (between 1.0 and 100.0)
+      const safeMultiplier = Math.max(1.0, Math.min(100.0, verifiedMultiplier));
+      
+      // Log for debugging
+      logger.info(`[ROLL] Multiplier check - Stored: ${bet.multiplier}, Verified: ${verifiedMultiplier}, Safe: ${safeMultiplier}, WinChance: ${winChance}%, HouseEdge: ${houseEdge}%`);
+      
+      const totalPayout = calculateProfit(betAmountNum, safeMultiplier);
+      const rawProfit = totalPayout - betAmountNum;
       profit = Math.min(rawProfit, maxProfit);
       
-      logger.info(`[ROLL] User ${walletAddress} WON! Transferring ${profit} ${TOKEN_SYMBOL} from house`);
+      // Ensure profit is never negative
+      if (profit < 0) {
+        logger.error(`[ROLL] CRITICAL: Calculated negative profit! betAmount: ${betAmountNum}, multiplier: ${verifiedMultiplier}, totalPayout: ${totalPayout}`);
+        profit = 0;
+      }
+      
+      logger.info(`[ROLL] User ${walletAddress} WON! Profit: ${profit} ${TOKEN_SYMBOL} (bet: ${betAmountNum}, multiplier: ${verifiedMultiplier}, totalPayout: ${totalPayout})`);
       
       // CRITICAL: Verify house wallet is initialized and has sufficient balance BEFORE paying out
       const { getHouseWallet } = await import('../utils/solanaWallet');
@@ -662,7 +691,7 @@ router.post('/roll', async (req, res) => {
         });
       }
       
-      // Verify house has sufficient token balance
+      // Verify house has sufficient token balance for profit payout
       const houseBalance = await getHouseBalance();
       if (houseBalance < profit) {
         logger.error(`[ROLL] CRITICAL: House insufficient balance! Has ${houseBalance}, needs ${profit}`);
@@ -701,6 +730,7 @@ router.post('/roll', async (req, res) => {
       
       logger.info(`[ROLL] House wallet verified. Balance: ${houseBalance}, SOL: ${houseSolBalance / 1e9}. Calling transferToUser for ${walletAddress}, amount: ${profit}`);
       
+      // Pay the profit (user never paid bet amount upfront, so we only pay profit on win)
       const transferResult = await transferToUser(walletAddress, profit);
       
       logger.info(`[ROLL] transferToUser returned: success=${transferResult.success}, signature=${transferResult.signature || 'NONE'}, error=${transferResult.error || 'NONE'}, attempts=${transferResult.attempts}`);

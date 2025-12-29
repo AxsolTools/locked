@@ -350,54 +350,57 @@ async function sendWithRetry(
       
       console.log(`[TX] Sending transaction attempt ${attempts}, feePayer: ${signers[0].publicKey.toBase58()}`);
       
-      // Sign and send
-      const signature = await sendAndConfirmTransaction(
-        connection,
-        transaction,
-        signers,
-        {
-          commitment: 'confirmed',
-          maxRetries: 2
-        }
-      );
+      // Sign transaction
+      transaction.sign(...signers);
+      
+      // Send transaction (don't wait for confirmation yet)
+      const signature = await connection.sendRawTransaction(transaction.serialize(), {
+        skipPreflight: false,
+        maxRetries: 3
+      });
       
       console.log(`[TX] Transaction sent: ${signature}`);
       
-      // CRITICAL: Verify transaction actually exists on-chain
-      // getSignatureStatus can return false positives - we must fetch the actual transaction
-      // Do this quickly - most transactions work fine
-      let txVerified = false;
-      for (let verifyAttempt = 0; verifyAttempt < 3; verifyAttempt++) {
-        try {
-          const txDetails = await connection.getTransaction(signature, {
-            commitment: 'confirmed',
-            maxSupportedTransactionVersion: 0
-          });
-          
-          if (txDetails && txDetails.meta && !txDetails.meta.err) {
-            console.log(`[TX] Transaction VERIFIED on-chain: ${signature}, slot: ${txDetails.slot}`);
-            txVerified = true;
-            break;
-          } else if (txDetails && txDetails.meta && txDetails.meta.err) {
-            console.error(`[TX] Transaction ${signature} failed:`, txDetails.meta.err);
-            lastError = new Error(`Transaction failed: ${JSON.stringify(txDetails.meta.err)}`);
-            break;
-          }
-        } catch (verifyError: any) {
-          // Transaction not found yet - might be propagating
+      // CRITICAL: Wait for confirmation with explicit timeout
+      try {
+        const confirmation = await connection.confirmTransaction({
+          signature,
+          blockhash,
+          lastValidBlockHeight
+        }, 'confirmed');
+        
+        if (confirmation.value.err) {
+          console.error(`[TX] Transaction ${signature} confirmed but has error:`, confirmation.value.err);
+          lastError = new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+          continue; // Retry
         }
         
-        // Only wait if we haven't verified yet and there are more attempts
-        if (!txVerified && verifyAttempt < 2) {
-          await new Promise(resolve => setTimeout(resolve, 500)); // Quick 500ms check
-        }
+        console.log(`[TX] Transaction confirmed: ${signature}`);
+      } catch (confirmError: any) {
+        console.error(`[TX] Transaction ${signature} confirmation failed:`, confirmError.message);
+        lastError = confirmError;
+        continue; // Retry
       }
       
-      if (!txVerified) {
-        console.error(`[TX] Transaction ${signature} not found on-chain - will retry entire transaction`);
+      // Final verification: transaction must exist on-chain
+      const txDetails = await connection.getTransaction(signature, {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0
+      });
+      
+      if (!txDetails || !txDetails.slot) {
+        console.error(`[TX] Transaction ${signature} not found on-chain after confirmation!`);
         lastError = new Error(`Transaction not found on chain: ${signature}`);
-        continue; // Retry the entire transaction
+        continue; // Retry
       }
+      
+      if (txDetails.meta && txDetails.meta.err) {
+        console.error(`[TX] Transaction ${signature} has error in meta:`, txDetails.meta.err);
+        lastError = new Error(`Transaction failed: ${JSON.stringify(txDetails.meta.err)}`);
+        continue; // Retry
+      }
+      
+      console.log(`[TX] Transaction VERIFIED on-chain: ${signature}, slot: ${txDetails.slot}`);
       
       return {
         success: true,
@@ -464,6 +467,11 @@ export async function transferFromUser(
       return { success: false, error: 'House wallet not initialized', attempts: 0 };
     }
     
+    // Get balance BEFORE transfer to verify it actually happened
+    const { getTokenBalance } = await import('./balanceService');
+    invalidateTokenCache(houseKeypair.publicKey.toBase58(), mint.toBase58());
+    const houseBalanceBefore = await getTokenBalance(houseKeypair.publicKey.toBase58(), mint.toBase58());
+    
     // Build transaction
     const transaction = await buildTransferTransaction(
       connection,
@@ -476,6 +484,49 @@ export async function transferFromUser(
     
     // Send with retry
     const result = await sendWithRetry(connection, transaction, [userKeypair]);
+    
+    // CRITICAL: ALWAYS verify balance actually changed
+    console.log(`[TX] Starting balance verification for transferFromUser: user pays house ${amount}`);
+    console.log(`[TX] House balance before: ${houseBalanceBefore.balance}`);
+    
+    // Wait for balance to propagate
+    let balanceVerified = false;
+    for (let balanceCheck = 0; balanceCheck < 5; balanceCheck++) {
+      if (balanceCheck > 0) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      invalidateTokenCache(houseKeypair.publicKey.toBase58(), mint.toBase58());
+      const houseBalanceAfter = await getTokenBalance(houseKeypair.publicKey.toBase58(), mint.toBase58());
+      const balanceIncrease = houseBalanceAfter.balance - houseBalanceBefore.balance;
+      
+      console.log(`[TX] Balance check ${balanceCheck + 1}/5: ${houseBalanceAfter.balance} (increase: +${balanceIncrease}, expected: +${amount})`);
+      
+      const tolerance = 0.000001;
+      if (balanceIncrease >= (amount - tolerance)) {
+        console.log(`[TX] ✅ Balance verified: +${balanceIncrease} (expected +${amount})`);
+        balanceVerified = true;
+        break;
+      }
+    }
+    
+    if (!balanceVerified) {
+      invalidateTokenCache(houseKeypair.publicKey.toBase58(), mint.toBase58());
+      const finalBalance = await getTokenBalance(houseKeypair.publicKey.toBase58(), mint.toBase58());
+      const finalIncrease = finalBalance.balance - houseBalanceBefore.balance;
+      
+      console.error(`[TX] ❌ CRITICAL: Balance verification FAILED for transferFromUser!`);
+      console.error(`[TX] Expected: +${amount}, Got: +${finalIncrease}`);
+      console.error(`[TX] House balance before: ${houseBalanceBefore.balance}, after: ${finalBalance.balance}`);
+      console.error(`[TX] Transaction signature: ${result.signature || 'NONE'}`);
+      
+      return {
+        success: false,
+        error: `Transaction did not execute - house balance did not increase. Expected +${amount}, got +${finalIncrease}. Signature: ${result.signature || 'NONE'}`,
+        attempts: result.attempts,
+        signature: result.signature
+      };
+    }
     
     // Invalidate caches
     if (result.success) {
@@ -518,6 +569,12 @@ export async function transferToUser(
     
     const userPubkey = new PublicKey(userWalletAddress);
     
+    // Get balance BEFORE transfer to verify it actually happened
+    const { getTokenBalance } = await import('./balanceService');
+    invalidateTokenCache(userWalletAddress, mint.toBase58());
+    const balanceBefore = await getTokenBalance(userWalletAddress, mint.toBase58());
+    const expectedBalanceAfter = balanceBefore.balance + amount;
+    
     // Build transaction
     const transaction = await buildTransferTransaction(
       connection,
@@ -530,6 +587,56 @@ export async function transferToUser(
     
     // Send with retry
     const result = await sendWithRetry(connection, transaction, [houseKeypair]);
+    
+    // CRITICAL: ALWAYS verify balance actually changed, regardless of what sendWithRetry says
+    console.log(`[TX] Starting balance verification for transferToUser: ${userWalletAddress}, amount: ${amount}`);
+    console.log(`[TX] Balance before transfer: ${balanceBefore.balance}`);
+    
+    // Wait for balance to propagate (transaction might be confirmed but balance not updated yet)
+    let balanceVerified = false;
+    for (let balanceCheck = 0; balanceCheck < 5; balanceCheck++) {
+      if (balanceCheck > 0) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      invalidateTokenCache(userWalletAddress, mint.toBase58());
+      const balanceAfter = await getTokenBalance(userWalletAddress, mint.toBase58());
+      const balanceIncrease = balanceAfter.balance - balanceBefore.balance;
+      
+      console.log(`[TX] Balance check ${balanceCheck + 1}/5: ${balanceAfter.balance} (increase: +${balanceIncrease}, expected: +${amount})`);
+      
+      // Check if balance increased by expected amount (allow small rounding differences)
+      const tolerance = 0.000001;
+      if (balanceIncrease >= (amount - tolerance)) {
+        console.log(`[TX] ✅ Balance verified: +${balanceIncrease} (expected +${amount})`);
+        balanceVerified = true;
+        break;
+      }
+    }
+    
+    if (!balanceVerified) {
+      invalidateTokenCache(userWalletAddress, mint.toBase58());
+      const finalBalance = await getTokenBalance(userWalletAddress, mint.toBase58());
+      const finalIncrease = finalBalance.balance - balanceBefore.balance;
+      
+      console.error(`[TX] ❌ CRITICAL: Balance verification FAILED after 5 attempts!`);
+      console.error(`[TX] Expected: +${amount}, Got: +${finalIncrease}`);
+      console.error(`[TX] Balance before: ${balanceBefore.balance}, after: ${finalBalance.balance}`);
+      console.error(`[TX] Transaction signature: ${result.signature || 'NONE'}`);
+      
+      // Even if sendWithRetry said success, we know it failed because balance didn't change
+      return {
+        success: false,
+        error: `Transaction did not execute - balance did not increase. Expected +${amount}, got +${finalIncrease}. Signature: ${result.signature || 'NONE'}`,
+        attempts: result.attempts,
+        signature: result.signature
+      };
+    }
+    
+    // Only return success if BOTH transaction was sent AND balance verified
+    if (!result.success) {
+      return result; // Return the original error from sendWithRetry
+    }
     
     // Invalidate caches
     if (result.success) {

@@ -644,17 +644,93 @@ router.post('/roll', async (req, res) => {
       const rawProfit = calculateProfit(betAmountNum, bet.multiplier) - betAmountNum;
       profit = Math.min(rawProfit, maxProfit);
       
-      logger.info(`User ${walletAddress} WON! Transferring ${profit} ${TOKEN_SYMBOL} from house`);
+      logger.info(`[ROLL] User ${walletAddress} WON! Transferring ${profit} ${TOKEN_SYMBOL} from house`);
+      
+      // CRITICAL: Verify house wallet is initialized and has sufficient balance BEFORE paying out
+      const { getHouseWallet } = await import('../utils/solanaWallet');
+      const houseWallet = getHouseWallet();
+      if (!houseWallet) {
+        logger.error(`[ROLL] CRITICAL: House wallet not initialized when trying to pay win!`);
+        txError = 'House wallet not available. Please contact support.';
+        bet.status = 'failed';
+        bet.txError = txError;
+        bets.set(betId, bet);
+        saveBetsToFile();
+        return res.status(500).json({ 
+          error: txError,
+          code: 'HOUSE_WALLET_NOT_AVAILABLE'
+        });
+      }
+      
+      // Verify house has sufficient token balance
+      const houseBalance = await getHouseBalance();
+      if (houseBalance < profit) {
+        logger.error(`[ROLL] CRITICAL: House insufficient balance! Has ${houseBalance}, needs ${profit}`);
+        txError = `House insufficient balance. Has ${houseBalance}, needs ${profit}`;
+        bet.status = 'failed';
+        bet.txError = txError;
+        bets.set(betId, bet);
+        saveBetsToFile();
+        return res.status(503).json({ 
+          error: txError,
+          code: 'HOUSE_INSUFFICIENT_BALANCE',
+          houseBalance,
+          required: profit
+        });
+      }
+      
+      // Verify house has SOL for transaction fees
+      const { getConnection } = await import('../utils/solanaClient');
+      const connection = await getConnection();
+      const houseSolBalance = await connection.getBalance(houseWallet.publicKey);
+      const requiredSol = 0.005 * 1e9; // 0.005 SOL minimum
+      if (houseSolBalance < requiredSol) {
+        logger.error(`[ROLL] CRITICAL: House insufficient SOL for fees! Has ${houseSolBalance / 1e9} SOL, needs 0.005 SOL`);
+        txError = `House wallet needs SOL for transaction fees. Please fund the house wallet.`;
+        bet.status = 'failed';
+        bet.txError = txError;
+        bets.set(betId, bet);
+        saveBetsToFile();
+        return res.status(503).json({ 
+          error: txError,
+          code: 'HOUSE_INSUFFICIENT_SOL',
+          solBalance: houseSolBalance / 1e9,
+          required: 0.005
+        });
+      }
+      
+      logger.info(`[ROLL] House wallet verified. Balance: ${houseBalance}, SOL: ${houseSolBalance / 1e9}. Calling transferToUser for ${walletAddress}, amount: ${profit}`);
       
       const transferResult = await transferToUser(walletAddress, profit);
       
+      logger.info(`[ROLL] transferToUser returned: success=${transferResult.success}, signature=${transferResult.signature || 'NONE'}, error=${transferResult.error || 'NONE'}, attempts=${transferResult.attempts}`);
+      
       if (transferResult.success) {
         txSignature = transferResult.signature;
-        logger.info(`Win payout successful: ${txSignature}`);
+        logger.info(`[ROLL] Win payout successful: ${txSignature}`);
       } else {
         txError = transferResult.error;
-        logger.error(`Win payout failed: ${txError}`);
-        // Still mark as won, but note the transfer issue
+        logger.error(`[ROLL] CRITICAL: Win payout FAILED: ${txError}`);
+        logger.error(`[ROLL] Transfer result details:`, JSON.stringify(transferResult, null, 2));
+        
+        // CRITICAL: If house payout fails, mark bet as failed and return error
+        bet.status = 'failed';
+        bet.txError = txError;
+        bets.set(betId, bet);
+        saveBetsToFile();
+        
+        // Release reserved liquidity
+        const releasedAmount = houseReservedLiquidity.get(betId) || 0;
+        houseReservedLiquidity.delete(betId);
+        logger.info(`Released ${releasedAmount} ${TOKEN_SYMBOL} reservation (payout failed) for bet ${betId}`);
+        
+        return res.status(500).json({ 
+          error: `Win payout failed: ${txError}`,
+          code: 'PAYOUT_FAILED',
+          betId,
+          won: true,
+          profit: profit.toString()
+        });
       }
     } else {
       // User lost - transfer from user to house

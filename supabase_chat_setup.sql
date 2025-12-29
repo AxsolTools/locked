@@ -14,17 +14,13 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON chat_messages(created
 -- Enable Row Level Security (RLS)
 ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
 
+-- Drop policy if it exists, then create it
 -- Policy: Allow service role to do everything (backend only)
 -- Note: The backend uses service_role key, so this is safe
-CREATE POLICY IF NOT EXISTS "Service role full access"
+DROP POLICY IF EXISTS "Service role full access" ON chat_messages;
+CREATE POLICY "Service role full access"
   ON chat_messages
   FOR ALL
   USING (true)
   WITH CHECK (true);
-
--- Optional: Allow public read access (if you want frontend to read directly)
--- CREATE POLICY IF NOT EXISTS "Public read access"
---   ON chat_messages
---   FOR SELECT
---   USING (true);
 

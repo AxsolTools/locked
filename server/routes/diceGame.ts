@@ -82,6 +82,7 @@ interface Bet {
   profit?: string;
   verified?: boolean;
   txSignature?: string;
+  txError?: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
 }
 
@@ -258,10 +259,19 @@ const calculateProfit = (betAmount: number, multiplier: number) => {
 
 /**
  * Apply house edge to multiplier calculation
+ * CRITICAL FIX: Use same formula as frontend to prevent mismatches
+ * Formula: (999999 / prediction) * (1 - houseEdge/100) for "under"
+ *          (999999 / (999999 - prediction)) * (1 - houseEdge/100) for "over"
  */
-const applyHouseEdge = (winChance: number, houseEdge: number) => {
-  const fairMultiplier = 100 / winChance;
-  return fairMultiplier * (1 - houseEdge / 100);
+const applyHouseEdge = (target: number, isOver: boolean, houseEdge: number) => {
+  // Calculate raw multiplier using same formula as frontend
+  const rawMultiplier = isOver 
+    ? (999999.99 / (999999.99 - target))
+    : (999999.99 / target);
+  
+  // Apply house edge
+  const houseEdgeFactor = (100 - houseEdge) / 100;
+  return rawMultiplier * houseEdgeFactor;
 };
 
 /**
@@ -478,9 +488,16 @@ router.post('/bet', async (req, res) => {
     }
 
     // Calculate win chance and multiplier
+    // CRITICAL FIX: Use target directly, not winChance percentage, to match frontend formula
     const winChance = isOver ? (999999.99 - target) / 999999.99 * 100 : target / 999999.99 * 100;
     const houseEdge = config.houseEdge || 1.5;
-    const multiplier = applyHouseEdge(winChance, houseEdge);
+    const multiplier = applyHouseEdge(target, isOver, houseEdge);
+    
+    // Validate multiplier is reasonable (should be between 1.0 and ~100 for normal bets)
+    if (multiplier < 1.0 || multiplier > 100) {
+      logger.error(`[BET] Invalid multiplier calculated: ${multiplier} for target: ${target}, isOver: ${isOver}`);
+      return res.status(400).json({ error: 'Invalid bet parameters. Multiplier out of range.' });
+    }
 
     // Calculate potential profit
     const potentialProfit = calculateProfit(betAmountNum, multiplier) - betAmountNum;
@@ -647,7 +664,8 @@ router.post('/roll', async (req, res) => {
       const houseEdge = parseFloat(process.env.HOUSE_EDGE || "1.5");
       
       // Recalculate multiplier with house edge to prevent manipulation
-      const verifiedMultiplier = applyHouseEdge(winChance, houseEdge);
+      // CRITICAL FIX: Use target and isOver directly, not winChance percentage
+      const verifiedMultiplier = applyHouseEdge(bet.target, bet.isOver, houseEdge);
       
       // CRITICAL: Verify stored multiplier matches calculated multiplier (within 0.01 tolerance for rounding)
       const multiplierDiff = Math.abs(bet.multiplier - verifiedMultiplier);

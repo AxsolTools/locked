@@ -8,7 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageCircle, Send, Loader2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { motion } from 'framer-motion';
-import { toast } from 'sonner';
+import { useToast } from '@/hooks/use-toast';
 
 interface ChatMessage {
   id: number;
@@ -19,6 +19,7 @@ interface ChatMessage {
 
 const LiveChat = () => {
   const { publicKey, isConnected, formatAddress } = useSolanaWallet();
+  const { toast } = useToast();
   const [message, setMessage] = useState('');
   const [chatEnabled, setChatEnabled] = useState(true);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -29,10 +30,14 @@ const LiveChat = () => {
   const { data: config } = useQuery<{ enabled: boolean; maxMessages: number }>({
     queryKey: ['/api/chat/config'],
     refetchInterval: 30000, // Check every 30 seconds
-    onSuccess: (data) => {
-      setChatEnabled(data.enabled);
-    },
   });
+
+  // Update chat enabled state when config changes
+  useEffect(() => {
+    if (config) {
+      setChatEnabled(config.enabled);
+    }
+  }, [config]);
 
   // Fetch messages
   const { data: messagesData } = useQuery<{ success: boolean; messages: ChatMessage[] }>({
@@ -76,8 +81,10 @@ const LiveChat = () => {
       queryClient.invalidateQueries({ queryKey: ['/api/chat/messages'] });
     },
     onError: (error: Error) => {
-      toast.error('Failed to send message', {
+      toast({
+        title: 'Failed to send message',
         description: error.message,
+        variant: 'destructive',
       });
     },
   });

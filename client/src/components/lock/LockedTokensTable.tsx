@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Info, Clock, CheckCircle2, ExternalLink } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
-import { toast } from "sonner";
+import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface VestingSchedule {
@@ -24,6 +24,7 @@ interface VestingSchedule {
 
 export default function LockedTokensTable() {
   const { publicKey, isConnected } = useSolanaWallet();
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [claimingId, setClaimingId] = useState<string | null>(null);
 
@@ -53,7 +54,8 @@ export default function LockedTokensTable() {
       return response.json();
     },
     onSuccess: (data, vestingId) => {
-      toast.success('Tokens claimed successfully!', {
+      toast({
+        title: 'Tokens claimed successfully!',
         description: data.txHash ? (
           <a 
             href={`https://solscan.io/tx/${data.txHash}`}
@@ -69,8 +71,10 @@ export default function LockedTokensTable() {
       setClaimingId(null);
     },
     onError: (error: Error) => {
-      toast.error('Failed to claim tokens', {
+      toast({
+        title: 'Failed to claim tokens',
         description: error.message,
+        variant: 'destructive',
       });
       setClaimingId(null);
     },

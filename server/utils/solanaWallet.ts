@@ -15,7 +15,8 @@ import {
   LAMPORTS_PER_SOL,
   sendAndConfirmTransaction,
   TransactionInstruction,
-  ComputeBudgetProgram
+  ComputeBudgetProgram,
+  Connection
 } from '@solana/web3.js';
 import {
   getAssociatedTokenAddress,

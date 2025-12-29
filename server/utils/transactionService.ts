@@ -143,7 +143,7 @@ async function findSourceTokenAccount(
 /**
  * Get user's keypair from stored encrypted private key
  */
-async function getUserKeypair(walletAddress: string): Promise<Keypair | null> {
+export async function getUserKeypair(walletAddress: string): Promise<Keypair | null> {
   try {
     const storedWallet = await storage.getUserWallet(walletAddress);
     if (!storedWallet) {

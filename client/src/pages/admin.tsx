@@ -123,10 +123,14 @@ const ChatConfigSection = () => {
 
   const { data: config } = useQuery<{ enabled: boolean }>({
     queryKey: ['/api/chat/config'],
-    onSuccess: (data) => {
-      setChatEnabled(data.enabled);
-    },
   });
+
+  // Update chat enabled state when config changes
+  useEffect(() => {
+    if (config) {
+      setChatEnabled(config.enabled);
+    }
+  }, [config]);
 
   const toggleMutation = useMutation({
     mutationFn: async (enabled: boolean) => {

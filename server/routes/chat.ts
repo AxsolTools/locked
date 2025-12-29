@@ -2,6 +2,11 @@ import { Router, Request, Response } from 'express';
 import { supabaseAdmin } from '../utils/supabase.js';
 import rateLimit from 'express-rate-limit';
 
+// Check if Supabase is available
+if (!supabaseAdmin) {
+  console.warn('[CHAT] Supabase not initialized. Chat routes will return errors.');
+}
+
 const router = Router();
 
 // Rate limiting: 5 messages per minute per IP
@@ -71,6 +76,10 @@ router.get('/config', async (_req: Request, res: Response) => {
  */
 router.get('/messages', async (_req: Request, res: Response) => {
   try {
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: 'Chat service unavailable. Supabase not configured.' });
+    }
+
     const { data, error } = await supabaseAdmin
       .from('chat_messages')
       .select('*')
@@ -146,6 +155,10 @@ router.post('/send', chatRateLimit, async (req: Request, res: Response) => {
     }
 
     // Insert message into Supabase
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: 'Chat service unavailable. Supabase not configured.' });
+    }
+
     const { data: newMessage, error: insertError } = await supabaseAdmin
       .from('chat_messages')
       .insert({
@@ -162,14 +175,16 @@ router.post('/send', chatRateLimit, async (req: Request, res: Response) => {
     }
 
     // Clean up old messages (keep only last 50)
-    const { error: deleteError } = await supabaseAdmin
-      .from('chat_messages')
-      .delete()
-      .lt('id', (newMessage.id || 0) - 50);
+    if (newMessage?.id) {
+      const { error: deleteError } = await supabaseAdmin
+        .from('chat_messages')
+        .delete()
+        .lt('id', newMessage.id - 50);
 
-    if (deleteError) {
-      console.error('[CHAT] Error cleaning up old messages:', deleteError);
-      // Non-critical, continue
+      if (deleteError) {
+        console.error('[CHAT] Error cleaning up old messages:', deleteError);
+        // Non-critical, continue
+      }
     }
 
     res.json({

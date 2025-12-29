@@ -425,7 +425,7 @@ router.post('/claim', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      claimedAmount,
+      claimedAmount: claimableAmount,
       totalClaimed: schedule.claimedAmount,
       remainingVested: schedule.amount - schedule.claimedAmount,
       txSignature: transferResult.signature,

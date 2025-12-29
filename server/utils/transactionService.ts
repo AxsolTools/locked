@@ -311,7 +311,8 @@ async function checkSolBalance(connection: Connection, wallet: PublicKey): Promi
     const balance = await connection.getBalance(wallet);
     const solBalance = balance / LAMPORTS_PER_SOL;
     console.log(`[TX] SOL balance for ${wallet.toBase58()}: ${solBalance} SOL`);
-    return { hasSol: balance > 5000000, balance: solBalance }; // Need at least 0.005 SOL for fees
+    // Lowered threshold to 0.002 SOL (2,000,000 lamports) - enough for token transfer + priority fee
+    return { hasSol: balance > 2000000, balance: solBalance };
   } catch (error) {
     console.error(`[TX] Error checking SOL balance:`, error);
     return { hasSol: false, balance: 0 };
@@ -333,9 +334,11 @@ async function sendWithRetry(
   // Check if payer has enough SOL for fees
   const { hasSol, balance } = await checkSolBalance(connection, signers[0].publicKey);
   if (!hasSol) {
+    const errorMsg = `Insufficient SOL for transaction fees. Wallet ${signers[0].publicKey.toBase58()} has ${balance} SOL, needs at least 0.002 SOL`;
+    console.error(`[TX] ❌ ${errorMsg}`);
     return {
       success: false,
-      error: `Insufficient SOL for transaction fees. Wallet ${signers[0].publicKey.toBase58()} has ${balance} SOL, needs at least 0.005 SOL`,
+      error: errorMsg,
       attempts: 0
     };
   }
@@ -344,16 +347,20 @@ async function sendWithRetry(
     attempts++;
     try {
       // Get recent blockhash
+      console.log(`[TX] Getting latest blockhash for attempt ${attempts}...`);
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
       transaction.recentBlockhash = blockhash;
       transaction.feePayer = signers[0].publicKey;
       
       console.log(`[TX] Sending transaction attempt ${attempts}, feePayer: ${signers[0].publicKey.toBase58()}`);
+      console.log(`[TX] Transaction has ${transaction.instructions.length} instructions`);
       
       // Sign transaction
       transaction.sign(...signers);
+      console.log(`[TX] Transaction signed by ${signers.length} signer(s)`);
       
       // Send transaction (don't wait for confirmation yet)
+      console.log(`[TX] Calling sendRawTransaction...`);
       const signature = await connection.sendRawTransaction(transaction.serialize(), {
         skipPreflight: false,
         maxRetries: 3
@@ -402,10 +409,15 @@ async function sendWithRetry(
       
       // CRITICAL: Verify the transaction actually executed the transfer
       // Check if pre/post token balances changed as expected
-      if (!txDetails.meta || !txDetails.meta.preTokenBalances || !txDetails.meta.postTokenBalances) {
-        console.error(`[TX] Transaction ${signature} missing token balance data - cannot verify transfer executed!`);
-        lastError = new Error(`Transaction missing token balance data: ${signature}`);
-        continue; // Retry - transaction might not have executed properly
+      // NOTE: Some transactions might not have token balance data in meta, but still executed successfully
+      // We'll rely on the external balance verification instead
+      if (txDetails.meta && txDetails.meta.preTokenBalances && txDetails.meta.postTokenBalances) {
+        // Token balance data available - we can do additional verification if needed
+        console.log(`[TX] Transaction ${signature} has token balance data for verification`);
+      } else {
+        // Missing token balance data, but transaction exists and has no errors
+        // This is acceptable - we'll verify balance externally
+        console.log(`[TX] Transaction ${signature} missing token balance data in meta, but transaction exists. Will verify balance externally.`);
       }
       
       console.log(`[TX] Transaction VERIFIED on-chain: ${signature}, slot: ${txDetails.slot}`);
@@ -439,9 +451,14 @@ async function sendWithRetry(
     }
   }
   
+  const errorMsg = lastError?.message || 'Transaction failed after retries';
+  console.error(`[TX] ❌ Transaction failed after ${attempts} attempts: ${errorMsg}`);
+  if (lastError) {
+    console.error(`[TX] Last error details:`, lastError);
+  }
   return {
     success: false,
-    error: lastError?.message || 'Transaction failed after retries',
+    error: errorMsg,
     attempts
   };
 }
@@ -497,9 +514,21 @@ export async function transferFromUser(
     // Send with retry
     const result = await sendWithRetry(connection, transaction, [userKeypair]);
     
-    // CRITICAL: ALWAYS verify balance actually changed
+    // CRITICAL: If transaction failed to send, return immediately
+    if (!result.success || !result.signature) {
+      console.error(`[TX] ❌ Transaction failed to send: ${result.error}`);
+      return {
+        success: false,
+        error: result.error || 'Transaction failed to send',
+        attempts: result.attempts,
+        signature: result.signature
+      };
+    }
+    
+    // CRITICAL: Verify balance actually changed (transaction was sent, now verify it executed)
     console.log(`[TX] Starting balance verification for transferFromUser: user pays house ${amount}`);
     console.log(`[TX] House balance before: ${houseBalanceBefore.balance}`);
+    console.log(`[TX] Transaction signature: ${result.signature}`);
     
     // Wait for balance to propagate
     let balanceVerified = false;
@@ -530,11 +559,11 @@ export async function transferFromUser(
       console.error(`[TX] ❌ CRITICAL: Balance verification FAILED for transferFromUser!`);
       console.error(`[TX] Expected: +${amount}, Got: +${finalIncrease}`);
       console.error(`[TX] House balance before: ${houseBalanceBefore.balance}, after: ${finalBalance.balance}`);
-      console.error(`[TX] Transaction signature: ${result.signature || 'NONE'}`);
+      console.error(`[TX] Transaction signature: ${result.signature}`);
       
       return {
         success: false,
-        error: `Transaction did not execute - house balance did not increase. Expected +${amount}, got +${finalIncrease}. Signature: ${result.signature || 'NONE'}`,
+        error: `Transaction did not execute - house balance did not increase. Expected +${amount}, got +${finalIncrease}. Signature: ${result.signature}`,
         attempts: result.attempts,
         signature: result.signature
       };
@@ -600,9 +629,21 @@ export async function transferToUser(
     // Send with retry
     const result = await sendWithRetry(connection, transaction, [houseKeypair]);
     
-    // CRITICAL: ALWAYS verify balance actually changed, regardless of what sendWithRetry says
+    // CRITICAL: If transaction failed to send, return immediately
+    if (!result.success || !result.signature) {
+      console.error(`[TX] ❌ Transaction failed to send: ${result.error}`);
+      return {
+        success: false,
+        error: result.error || 'Transaction failed to send',
+        attempts: result.attempts,
+        signature: result.signature
+      };
+    }
+    
+    // CRITICAL: Verify balance actually changed (transaction was sent, now verify it executed)
     console.log(`[TX] Starting balance verification for transferToUser: ${userWalletAddress}, amount: ${amount}`);
     console.log(`[TX] Balance before transfer: ${balanceBefore.balance}`);
+    console.log(`[TX] Transaction signature: ${result.signature}`);
     
     // Wait for balance to propagate (transaction might be confirmed but balance not updated yet)
     let balanceVerified = false;
@@ -634,20 +675,15 @@ export async function transferToUser(
       console.error(`[TX] ❌ CRITICAL: Balance verification FAILED after 5 attempts!`);
       console.error(`[TX] Expected: +${amount}, Got: +${finalIncrease}`);
       console.error(`[TX] Balance before: ${balanceBefore.balance}, after: ${finalBalance.balance}`);
-      console.error(`[TX] Transaction signature: ${result.signature || 'NONE'}`);
+      console.error(`[TX] Transaction signature: ${result.signature}`);
       
-      // Even if sendWithRetry said success, we know it failed because balance didn't change
+      // Transaction was sent but balance didn't change - transaction must have failed
       return {
         success: false,
-        error: `Transaction did not execute - balance did not increase. Expected +${amount}, got +${finalIncrease}. Signature: ${result.signature || 'NONE'}`,
+        error: `Transaction did not execute - balance did not increase. Expected +${amount}, got +${finalIncrease}. Signature: ${result.signature}`,
         attempts: result.attempts,
         signature: result.signature
       };
-    }
-    
-    // Only return success if BOTH transaction was sent AND balance verified
-    if (!result.success) {
-      return result; // Return the original error from sendWithRetry
     }
     
     // Invalidate caches

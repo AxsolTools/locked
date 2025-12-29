@@ -20,7 +20,7 @@ const Home = () => {
             {/* Content Area - Left Side */}
             <div className="col-span-12 lg:col-span-9">
               <h1 className="text-5xl md:text-7xl font-bold mb-8 leading-tight tracking-tight">
-                Lock Your <span className="bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent">LOCKED</span> Tokens 
+                Lock Your <span className="bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent">Tokens</span> 
                 <br />
                 on <span className="text-emerald-400">Solana</span>
               </h1>

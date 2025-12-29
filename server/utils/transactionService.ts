@@ -382,7 +382,7 @@ async function sendWithRetry(
         continue; // Retry
       }
       
-      // Final verification: transaction must exist on-chain
+      // Final verification: transaction must exist on-chain AND have no errors
       const txDetails = await connection.getTransaction(signature, {
         commitment: 'confirmed',
         maxSupportedTransactionVersion: 0
@@ -398,6 +398,14 @@ async function sendWithRetry(
         console.error(`[TX] Transaction ${signature} has error in meta:`, txDetails.meta.err);
         lastError = new Error(`Transaction failed: ${JSON.stringify(txDetails.meta.err)}`);
         continue; // Retry
+      }
+      
+      // CRITICAL: Verify the transaction actually executed the transfer
+      // Check if pre/post token balances changed as expected
+      if (!txDetails.meta || !txDetails.meta.preTokenBalances || !txDetails.meta.postTokenBalances) {
+        console.error(`[TX] Transaction ${signature} missing token balance data - cannot verify transfer executed!`);
+        lastError = new Error(`Transaction missing token balance data: ${signature}`);
+        continue; // Retry - transaction might not have executed properly
       }
       
       console.log(`[TX] Transaction VERIFIED on-chain: ${signature}, slot: ${txDetails.slot}`);
@@ -446,10 +454,14 @@ export async function transferFromUser(
   amount: number,
   tokenMint?: string
 ): Promise<TransferResult> {
+  console.log(`[TX] transferFromUser CALLED: user=${userWalletAddress}, amount=${amount}, mint=${tokenMint || 'default'}`);
+  
   try {
     const connection = getConnection();
     const mint = tokenMint ? new PublicKey(tokenMint) : getTokenMint();
     const decimals = getTokenDecimals();
+    
+    console.log(`[TX] transferFromUser: mint=${mint?.toBase58()}, decimals=${decimals}`);
     
     if (!mint) {
       return { success: false, error: 'Token mint not configured', attempts: 0 };

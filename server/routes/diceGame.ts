@@ -660,16 +660,53 @@ router.post('/roll', async (req, res) => {
       // User lost - transfer from user to house
       profit = -betAmountNum;
       
-      logger.info(`User ${walletAddress} LOST. Transferring ${betAmountNum} ${TOKEN_SYMBOL} to house`);
+      logger.info(`[ROLL] User ${walletAddress} LOST. Transferring ${betAmountNum} ${TOKEN_SYMBOL} to house`);
+      
+      // CRITICAL: Verify wallet is still registered and has balance BEFORE attempting transfer
+      const storedWallet = await storage.getUserWallet(walletAddress);
+      if (!storedWallet) {
+        logger.error(`[ROLL] CRITICAL: Wallet ${walletAddress} not registered when trying to collect loss!`);
+        txError = 'Wallet not registered. Please reconnect your wallet.';
+        bet.status = 'failed';
+        bet.txError = txError;
+        bets.set(betId, bet);
+        saveBetsToFile();
+        return res.status(400).json({ 
+          error: txError,
+          code: 'WALLET_NOT_REGISTERED'
+        });
+      }
+      
+      // Verify user still has sufficient balance
+      invalidateCache(walletAddress);
+      const { sufficient, currentBalance } = await hasSufficientBalance(walletAddress, betAmountNum);
+      if (!sufficient) {
+        logger.error(`[ROLL] CRITICAL: User ${walletAddress} insufficient balance when trying to collect loss! Has ${currentBalance}, needs ${betAmountNum}`);
+        txError = `Insufficient balance to pay loss. Has ${currentBalance}, needs ${betAmountNum}`;
+        bet.status = 'failed';
+        bet.txError = txError;
+        bets.set(betId, bet);
+        saveBetsToFile();
+        return res.status(400).json({ 
+          error: txError,
+          balance: currentBalance,
+          required: betAmountNum
+        });
+      }
+      
+      logger.info(`[ROLL] Wallet verified and balance confirmed. Calling transferFromUser for ${walletAddress}, amount: ${betAmountNum}`);
       
       const transferResult = await transferFromUser(walletAddress, betAmountNum);
       
+      logger.info(`[ROLL] transferFromUser returned: success=${transferResult.success}, signature=${transferResult.signature || 'NONE'}, error=${transferResult.error || 'NONE'}, attempts=${transferResult.attempts}`);
+      
       if (transferResult.success) {
         txSignature = transferResult.signature;
-        logger.info(`Loss collection successful: ${txSignature}`);
+        logger.info(`[ROLL] Loss collection successful: ${txSignature}`);
       } else {
         txError = transferResult.error;
-        logger.error(`Loss collection failed: ${txError}`);
+        logger.error(`[ROLL] Loss collection FAILED: ${txError}`);
+        logger.error(`[ROLL] Transfer result details:`, JSON.stringify(transferResult, null, 2));
       }
     }
 

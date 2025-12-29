@@ -14,6 +14,7 @@ import diceAnimation from '../assets/dice-animation.json';
 import coinAnimation from '../assets/coin-animation.json';
 import { Separator } from '../components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
+import LiveChat from '../components/chat/LiveChat';
 
 interface LeaderboardEntry {
   address: string;
@@ -382,6 +383,9 @@ const DiceGamePage: React.FC = () => {
             </CardContent>
           </Card>
         </motion.div>
+        
+        {/* Live Chat Section */}
+        <LiveChat />
         
         {/* Leaderboard Section */}
         <motion.div className="mt-12" variants={itemVariants}>

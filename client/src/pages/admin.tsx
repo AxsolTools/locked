@@ -20,7 +20,8 @@ import {
   Loader2,
   Dice1,
   Wallet,
-  RefreshCw
+  RefreshCw,
+  MessageCircle
 } from "lucide-react";
 import {
   Tabs,
@@ -113,6 +114,100 @@ interface SystemConfig {
   additionalSettings?: Record<string, any>;
   diceGameConfig: DiceGameConfig;
 }
+
+// Chat Configuration Component
+const ChatConfigSection = () => {
+  const { toast } = useToast();
+  const [chatEnabled, setChatEnabled] = useState<boolean | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const { data: config } = useQuery<{ enabled: boolean }>({
+    queryKey: ['/api/chat/config'],
+    onSuccess: (data) => {
+      setChatEnabled(data.enabled);
+    },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const response = await fetch('/api/chat/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to toggle chat');
+      }
+
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setChatEnabled(data.enabled);
+      toast({
+        title: 'Chat status updated',
+        description: `Chat is now ${data.enabled ? 'enabled' : 'disabled'}`,
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/chat/config'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleToggle = (enabled: boolean) => {
+    toggleMutation.mutate(enabled);
+  };
+
+  if (chatEnabled === null) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <Skeleton className="h-10 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center">
+          <MessageCircle className="mr-2 h-5 w-5" />
+          Chat Configuration
+        </CardTitle>
+        <CardDescription>
+          Enable or disable the live chat feature for all users.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between p-4 border rounded-lg">
+          <div className="space-y-0.5">
+            <div className="text-sm font-medium">Chat Status</div>
+            <div className="text-sm text-muted-foreground">
+              {chatEnabled ? 'Chat is currently enabled' : 'Chat is currently disabled'}
+            </div>
+          </div>
+          <Switch
+            checked={chatEnabled}
+            onCheckedChange={handleToggle}
+            disabled={toggleMutation.isPending}
+          />
+        </div>
+        <div className="text-sm text-muted-foreground">
+          <p>• When disabled, users cannot send messages</p>
+          <p>• Existing messages remain visible</p>
+          <p>• Changes take effect immediately</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
 
 const Admin = () => {
   const { publicKey, isConnected } = useSolanaWallet();
@@ -799,7 +894,7 @@ const Admin = () => {
       
       {/* Main Tabs */}
       <Tabs defaultValue="users" className="w-full">
-        <TabsList className="grid grid-cols-5 mb-8">
+        <TabsList className="grid grid-cols-6 mb-8">
           <TabsTrigger value="users" className="flex items-center">
             <Users className="mr-2 h-4 w-4" />
             <span>Users</span>
@@ -819,6 +914,10 @@ const Admin = () => {
           <TabsTrigger value="dice-game" className="flex items-center">
             <Dice1 className="mr-2 h-4 w-4" />
             <span>Dice Game</span>
+          </TabsTrigger>
+          <TabsTrigger value="chat" className="flex items-center">
+            <MessageCircle className="mr-2 h-4 w-4" />
+            <span>Chat</span>
           </TabsTrigger>
           <TabsTrigger value="wallet" className="flex items-center">
             <Wallet className="mr-2 h-4 w-4" />
@@ -1464,6 +1563,11 @@ const Admin = () => {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+        
+        {/* Chat Configuration Tab */}
+        <TabsContent value="chat">
+          <ChatConfigSection />
         </TabsContent>
         
         {/* Wallet Management Tab */}

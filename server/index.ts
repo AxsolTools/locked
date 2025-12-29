@@ -6,6 +6,7 @@ import diceGameRoutes, { initializeWebSocket, cleanupBets } from './routes/diceG
 import balanceRoutes, { loadBalances } from './routes/balance';
 import vestingRoutes, { loadVestingSchedules } from './routes/vesting';
 import adminRoutes from './routes/admin';
+import chatRoutes from './routes/chat';
 import { initializeSolanaClient } from './utils/solanaClient';
 import { initializeHouseWallet, isWalletServiceReady } from './utils/solanaWallet';
 import dotenv from 'dotenv';
@@ -348,6 +349,10 @@ console.log('Vesting routes registered');
 // Admin routes
 app.use('/api/admin', adminRoutes);
 console.log('Admin routes registered');
+
+// Chat routes
+app.use('/api/chat', chatRoutes);
+console.log('Chat routes registered');
 
 // Create HTTP server
 const server = http.createServer(app);

@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Lock, Mail } from "lucide-react";
+import { Lock } from "lucide-react";
 
 // X (Twitter) icon component
 const XIcon = ({ className }: { className?: string }) => (
@@ -26,26 +26,15 @@ const Footer = () => {
             Secure token locking platform powered by Solana. Lock your assets with confidence using our industry-leading security protocols.
           </p>
           
-          <div className="flex items-center space-x-6">
-            <a 
-              href="https://x.com/LockedRoom" 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="text-muted-foreground hover:text-secondary transition-colors p-2 rounded-full hover:bg-primary/10 flex items-center gap-2"
-            >
-              <XIcon className="h-5 w-5" />
-              <span className="text-sm">X</span>
-            </a>
-            <a 
-              href="https://x.com/LockedRoom" 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="text-muted-foreground hover:text-secondary transition-colors p-2 rounded-full hover:bg-primary/10 flex items-center gap-2"
-            >
-              <Mail className="h-5 w-5" />
-              <span className="text-sm">Support</span>
-            </a>
-          </div>
+          <a 
+            href="https://x.com/LockedRoom" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="text-muted-foreground hover:text-secondary transition-colors p-2 rounded-full hover:bg-primary/10 flex items-center gap-2"
+          >
+            <XIcon className="h-5 w-5" />
+            <span className="text-sm">Follow us on X</span>
+          </a>
         </div>
         
         <div className="mt-10 pt-6 border-t border-muted flex flex-col md:flex-row justify-between items-center gap-4">

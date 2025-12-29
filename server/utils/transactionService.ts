@@ -363,29 +363,11 @@ async function sendWithRetry(
       
       console.log(`[TX] Transaction sent: ${signature}`);
       
-      // CRITICAL: Triple-verify the transaction actually landed on-chain
-      // getSignatureStatus can lie - we must fetch the actual transaction
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
-      
-      // First check status
-      const txStatus = await connection.getSignatureStatus(signature);
-      
-      if (!txStatus.value) {
-        console.error(`[TX] Transaction ${signature} status not found!`);
-        lastError = new Error(`Transaction status not found: ${signature}`);
-        continue; // Retry
-      }
-      
-      if (txStatus.value.err) {
-        console.error(`[TX] Transaction ${signature} failed on-chain:`, txStatus.value.err);
-        lastError = new Error(`Transaction failed on-chain: ${JSON.stringify(txStatus.value.err)}`);
-        continue; // Retry
-      }
-      
-      // CRITICAL: Now fetch the ACTUAL transaction to prove it exists
-      // This is the only way to be 100% sure the transaction landed
+      // CRITICAL: Verify transaction actually exists on-chain
+      // getSignatureStatus can return false positives - we must fetch the actual transaction
+      // Do this quickly - most transactions work fine
       let txVerified = false;
-      for (let verifyAttempt = 0; verifyAttempt < 5; verifyAttempt++) {
+      for (let verifyAttempt = 0; verifyAttempt < 3; verifyAttempt++) {
         try {
           const txDetails = await connection.getTransaction(signature, {
             commitment: 'confirmed',
@@ -393,30 +375,29 @@ async function sendWithRetry(
           });
           
           if (txDetails && txDetails.meta && !txDetails.meta.err) {
-            console.log(`[TX] Transaction CONFIRMED on-chain: ${signature}, slot: ${txDetails.slot}`);
+            console.log(`[TX] Transaction VERIFIED on-chain: ${signature}, slot: ${txDetails.slot}`);
             txVerified = true;
             break;
           } else if (txDetails && txDetails.meta && txDetails.meta.err) {
-            console.error(`[TX] Transaction ${signature} has error in meta:`, txDetails.meta.err);
+            console.error(`[TX] Transaction ${signature} failed:`, txDetails.meta.err);
             lastError = new Error(`Transaction failed: ${JSON.stringify(txDetails.meta.err)}`);
             break;
-          } else {
-            console.warn(`[TX] Transaction ${signature} not found on attempt ${verifyAttempt + 1}, waiting...`);
-            await new Promise(resolve => setTimeout(resolve, 2000));
           }
         } catch (verifyError: any) {
-          console.warn(`[TX] Verify attempt ${verifyAttempt + 1} failed:`, verifyError.message);
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          // Transaction not found yet - might be propagating
+        }
+        
+        // Only wait if we haven't verified yet and there are more attempts
+        if (!txVerified && verifyAttempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, 500)); // Quick 500ms check
         }
       }
       
       if (!txVerified) {
-        console.error(`[TX] CRITICAL: Transaction ${signature} could not be verified after 5 attempts!`);
-        lastError = new Error(`Transaction verification failed - not found on chain: ${signature}`);
+        console.error(`[TX] Transaction ${signature} not found on-chain - will retry entire transaction`);
+        lastError = new Error(`Transaction not found on chain: ${signature}`);
         continue; // Retry the entire transaction
       }
-      
-      console.log(`[TX] Transaction FULLY VERIFIED: ${signature}`);
       
       return {
         success: true,

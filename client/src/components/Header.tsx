@@ -1,17 +1,36 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { Menu, X, Lock, Home, History, BarChart3, ShieldCheck, LayoutDashboard, Rocket, Dice1 } from "lucide-react";
+import { Menu, X, Lock, Home, History, BarChart3, ShieldCheck, LayoutDashboard, Rocket, Dice1, Copy, Check } from "lucide-react";
 import WalletStatus from "./wallet/WalletStatus";
 import { useSolanaWallet } from "../contexts/SolanaWalletContext";
 import { useIsMobile } from "../hooks/use-mobile";
 import logoImage from "../assets/logo.png";
+import { useToast } from "@/hooks/use-toast";
+
+const CONTRACT_ADDRESS = "BE9xHRuiHMihQAcdhavTYQLL1FUq3PmsXjCxeA8Qpump";
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [location] = useLocation();
   const { publicKey, isConnected } = useSolanaWallet();
   const isMobile = useIsMobile();
   const isAuthenticated = isConnected;
+  const { toast } = useToast();
+
+  const copyContractAddress = () => {
+    navigator.clipboard.writeText(CONTRACT_ADDRESS);
+    setCopied(true);
+    toast({
+      title: "Contract address copied!",
+      description: CONTRACT_ADDRESS,
+    });
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const formatAddress = (address: string) => {
+    return `${address.slice(0, 4)}...${address.slice(-4)}`;
+  };
 
   // Close mobile menu when changing routes
   useEffect(() => {
@@ -56,6 +75,29 @@ const Header = () => {
           <Link href="/" className="text-xl md:text-2xl font-outfit font-bold text-foreground whitespace-nowrap">
             <span className="bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent">LOCKED</span>
           </Link>
+          <div className="hidden md:flex items-center gap-2 ml-3 px-2 py-1 bg-zinc-800/50 hover:bg-zinc-800 rounded-md border border-zinc-700/50">
+            <span className="text-xs text-muted-foreground">CA:</span>
+            <a
+              href={`https://solscan.io/token/${CONTRACT_ADDRESS}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-cyan-400 hover:text-cyan-300 font-mono transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {formatAddress(CONTRACT_ADDRESS)}
+            </a>
+            <button
+              onClick={copyContractAddress}
+              className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
+              title="Copy contract address"
+            >
+              {copied ? (
+                <Check className="h-3 w-3 text-green-400" />
+              ) : (
+                <Copy className="h-3 w-3" />
+              )}
+            </button>
+          </div>
           <Link 
             href="/dice-game" 
             className="hidden md:flex ml-2 text-xs bg-cyan-500/10 hover:bg-cyan-500/20 transition-colors px-2 py-1 rounded-md items-center"
